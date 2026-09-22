@@ -65,8 +65,9 @@ derive_goal(command: DeriveGoalCommand) -> Goal           # 以此为起点新�
 维持型目标按 `review_period`（默认 `weekly`）产生周期回顾结果：`on_track` / `off_track` / `interrupted`。
 
 - 回顾由 Beat 按用户时区触发，与每日安排使用同源去重键。
-- 回顾结果写入独立记录并携带 `policy_version`，不写入 `goals.status`。
+- 回顾结果写入 `goal_review_results`（见 [核心数据模型](03-data-model.md) 第 5 节）并携带 `policy_version`，不写入 `goals.status`。该表与日级的 `daily_reviews` 是两回事，不复用。
 - `off_track` / `interrupted` 进入调整评估，可提出降低频率或调整内容的建议；超出计划包络时按待确认变更处理。
+- 维持型目标的计划没有终点：`plan_versions.horizon_end` 可空，滚动展开按 `review_period` 持续进行，里程碑退化为周期性回顾点。展开的唯一终止条件是目标离开 `active`。见 [计划引擎](12-plan-engine.md) 第 3 节。
 
 ## 6. `goals` 字段建议
 
@@ -78,6 +79,8 @@ derive_goal(command: DeriveGoalCommand) -> Goal           # 以此为起点新�
 
 - 任务全部完成且全部验证通过时，`goals.status` 仍为 `active`，只产生可完成提示。
 - `kind=maintenance` 请求 `completed` 被拒绝。
+- 维持型目标的计划在 `horizon_end` 为空的情况下持续滚动展开，不产生"计划已执行完"状态；暂停后展开停止，恢复后重新开始。
+- 周期回顾结果落在 `goal_review_results` 且不改写 `goals.status`；同一周期重复触发只产生一条记录。
 - 暂停一个含 `in_progress` 任务的目标成功，且该任务状态与已投入分钟数不变；恢复后仍为 `in_progress`。
 - 暂停后被依赖方的任务进入计算态 `blocked`，且响应中返回受影响任务列表。
 - 暂停释放的预算不触发其他目标自动追加任务。

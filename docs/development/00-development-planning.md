@@ -4,11 +4,11 @@
 
 ## 输入约束
 
-- 首版 SDK 已确认同时支持 OpenAI 和 Anthropic；通过原生适配路径调用，用户可自定义相应协议地址，详见模型接入设计。
+- 首版已确认同时支持 OpenAI 和 Anthropic 两个 provider；通过 LangChain 统一 chat model 抽象调用，用户可自定义相应协议地址，详见模型接入设计。
 
 - 最新确认：项目面向个人用户开源并强调开箱即用，默认允许自由注册登录，不设置邀请码；用户可以配置自己的模型和凭证。详见 [用户模型接入](07-model-provider-design.md)。
 
-- 已确认首版自研 Agent 工作流，采用模型供应商官方 Python SDK 加薄封装，不引入 LangChain/LangGraph。仅实现本产品所需流程；模型供应商仍待选择。
+- 已确认首版 Agent 编排采用 LangGraph，模型接入采用 LangChain。图为短生命周期，不启用 checkpointer；等待用户与业务版本仍由 seekdb 承载。仅实现本产品所需流程，不采用框架的预制 agent 循环与记忆/检索组件；模型供应商由用户自行配置。
 
 - 网页端，面向个人用户；同一实例支持多个隔离账号，主要在中国大陆使用。
 - 已确认前端采用 React + TypeScript + Vite + shadcn/ui；后端采用 Python + FastAPI，数据库采用 seekdb，数据访问与迁移保留 SQLAlchemy + Alembic，后台任务采用 Celery + Redis。选型依据见前端选型比较及后端架构提案。

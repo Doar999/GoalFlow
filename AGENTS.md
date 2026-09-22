@@ -60,7 +60,7 @@ scripts/                统一门禁脚本
 
 前端 React + TypeScript + Vite + shadcn/ui；后端 Python 3.11+ + FastAPI；数据库 seekdb；数据访问与迁移 SQLAlchemy + Alembic；后台任务 Celery + Redis + Beat；作业事件 SSE；部署 Docker Compose + Nginx。
 
-Agent 为自研工作流，通过 OpenAI 与 Anthropic 官方 Python SDK 加薄封装调用。**不引入 LangChain / LangGraph。** 首版前端不引入 Redux / Zustand。
+Agent 编排采用 LangGraph，模型接入采用 LangChain（`langchain-openai` / `langchain-anthropic`），支持 OpenAI 与 Anthropic 两个 provider。**图为短生命周期：一次作业内跑完即结束，不启用 checkpointer。** 等待用户、版本校验、预算与计划变更判级仍在 seekdb 业务表和业务模块，不下放给框架。不使用 `create_agent` 预制循环、LangChain memory / retriever / vectorstore，也不把数据库写入包装成模型可调用的 tool。LangSmith 追踪默认关闭。首版前端不引入 Redux / Zustand。
 
 包管理：后端 `uv`，前端 `pnpm`。锁文件必须提交。
 
@@ -99,7 +99,7 @@ Python 3.11+，PEP 8：模块与函数 `snake_case`，类 `PascalCase`，常量 
 
 TypeScript 严格模式，禁止用 `any` 和非空断言 `!` 绕过类型。组件 `PascalCase`，hook `useXxx`，文件随导出主体命名。业务规则跟随 feature 目录，不建按技术类型划分的全局 `components/hooks/services` 大杂烩。
 
-标识符、数据库字段、API 字段一律使用 CONTEXT.md 的英文术语（如 `goal_profile`、`plan_envelope`、`check_in`），不得混用同义词。
+标识符、数据库字段、API 字段一律使用 CONTEXT.md 的英文术语（如 `goal_profile`、`task_batch`、`checkin`），不得混用同义词。多词术语用单下划线小写形式，已在设计文档中固定拼写的以设计文档为准（执行记录写 `checkin`，不写 `check_in`）。
 
 注释只解释非显然的意图，不复述代码。
 

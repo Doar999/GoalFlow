@@ -94,4 +94,4 @@ revise_route(
 - 用户微调产生新 route 记录并保留 based_on_route_id。
 - profile 或 availability revision 变化使晚返回结果失效。
 - 预算不足、只有一条可行和全部不可行均返回不同的结构化结果。
-- OpenAI 与 Anthropic 适配器返回相同内部 schema，领域与预算校验共用同一实现。
+- `openai` 与 `anthropic` 两个 provider 返回相同内部 schema，领域与预算校验共用同一实现。

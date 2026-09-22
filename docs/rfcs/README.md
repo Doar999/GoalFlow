@@ -29,15 +29,17 @@
 
 ## 首批可能需要 RFC 的事项
 
-`06-delivery-plan.md` 第 6 节与 `05-module-contracts.md` 第 6 节列出的待收敛事项，进入实现前多数需要走这条路径：
+`06-delivery-plan.md`"当前需先收敛的事项"列出的内容，进入实现前多数需要走这条路径：
 
-- OpenAI / Anthropic 具体 API 子集与模型能力门槛
-- 允许移动的日期范围、投入变化阈值、提醒时机
-- 具体约束阈值的调整（领域规则、附件范围与验证方式已确认，见产品文档 10 与 11）
+- OpenAI / Anthropic 具体 API 子集与模型能力门槛（provider 选型本身已由 [RFC 0001](0001-adopt-langchain-langgraph.md) 确认）
+- 具体约束阈值的后续调整（领域规则、附件范围与验证方式已确认，见产品文档 10 与 11；可移动日期范围与投入阈值已确认，见产品文档 13）
 - seekdb 不兼容项的替代实现方案（依赖 T01 结论）
+
+已确认的默认值不需要 RFC，清单见 [05-module-contracts.md](../development/05-module-contracts.md)"默认值状态"。
 
 ## 索引
 
 | 编号 | 标题 | 状态 |
 | --- | --- | --- |
 | 0000 | 模板 | — |
+| [0001](0001-adopt-langchain-langgraph.md) | 首版 Agent 编排与模型接入改用 LangChain + LangGraph | 已接受 |

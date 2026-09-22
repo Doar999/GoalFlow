@@ -26,9 +26,9 @@
 - Agent 模块：澄清、路线生成、任务细化、反馈分析，产出结构化建议，不能直接任意修改数据库。
 - 后台作业模块：持久化作业状态、分发、重试、取消请求与运行事件；内部实现对调用者隐藏队列细节。
 
-按 codebase-design 技能，复杂规则集中在上述模块的少量 Interface 后；HTTP 路由与后台 Worker 调用同一套规则。首版使用显式 Python 工作流与持久化状态，暂不额外引入 Agent 编排框架；确有复杂恢复或分支需求再评估。
+按 codebase-design 技能，复杂规则集中在上述模块的少量 Interface 后；HTTP 路由与后台 Worker 调用同一套规则。Agent 步骤的调用顺序由 LangGraph 承担，业务规则不进入图节点内部。
 
-用户比较框架与自研方案后已确认：首版采用自研工作流。模型通过供应商官方 Python SDK 加薄封装接入，不引入 LangChain/LangGraph，也不建设通用 Agent 平台。流程状态和等待用户的节点由 seekdb 持久化，Celery 负责后台执行，Pydantic 与业务模块负责输出和变更校验。具体模型供应商待选；未来是否迁移框架按实际复杂度评估，不作为首版承诺。
+编排与模型接入已确认：Agent 步骤实现为 LangGraph `StateGraph`，模型通过 LangChain 统一 chat model 抽象接入，provider 范围为 OpenAI 与 Anthropic（PRD D08），供应商与模型由每位用户自行配置。**图为短生命周期**——一次 Celery 作业内跑完即结束，不启用 checkpointer，也不使用跨请求的 `interrupt` / `Command(resume)`。流程状态与等待用户的节点由 seekdb 持久化，用户下一次确认是一次新作业，重新读取当前业务版本重新构图执行；这比 checkpoint 恢复更严格，因为它强制重新校验业务版本而不是复用旧快照。Celery 负责后台执行，Pydantic 与业务模块负责输出和变更校验。不建设通用 Agent 平台，也不采用框架的预制 agent 循环与记忆/检索组件。选型理由与被排除的替代方案见 [RFC 0001](../rfcs/0001-adopt-langchain-langgraph.md)。
 
 ## Agent 与确定性规则
 
@@ -36,7 +36,7 @@
 
 模型负责理解、估计、生成和解释；后端校验结果结构、目标归属、时间总额、依赖无环和变更权限。模型给出时长不代表估计必然准确，实际反馈用于修正。
 
-领域策略提供学习、健身和通用目标的专属澄清字段及规则。具体领域首版覆盖深度仍待产品细化。首版以一个实际模型服务接入实现集中处理超时、流式输出、结构化输出、用量及错误，不提前建设完整插件平台。
+领域策略提供学习、健身和通用目标的专属澄清字段及规则；三类的覆盖深度、硬约束与责任边界已确认，见 [三类领域专业规则与责任边界](../product/11-domain-rules.md) 与 [领域策略包与约束校验实现基线](16-domain-policy-design.md)。首版通过统一的模型调用 Interface 集中处理超时、流式输出、结构化输出、用量及错误，其下由 LangChain 的 chat model 抽象承担供应商差异（见 [模型接入设计](07-model-provider-design.md)）；OpenAI 与 Anthropic 两个 provider 分别验收，不以一个 provider 通过代替另一个，也不提前建设完整插件平台。
 
 小调整经规则检查后可执行并记录原因；大调整存为待确认建议。确认时再次检查基础版本与共享时间预算。模型输出非法、依赖冲突或计划已变更时返回可解释的失败或重新生成请求。
 
@@ -50,7 +50,7 @@
 
 ## 数据与可靠性
 
-核心关系表包括 users、password_credentials、sessions、goals、goal_links、routes、plan_versions、tasks、task_dependencies、weekly_availability、daily_overrides、daily_agendas、agenda_items、checkins、artifacts、conversations、messages、change_proposals、jobs、job_events、outbox_events。具体字段和索引在数据库设计中展开。
+实体划分为账号与目标、计划与任务版本、时间预算与每日安排、执行与材料、后台作业与审计五组。**表名、字段与约束的事实源是 [核心数据模型](03-data-model.md)**，本文不再并列一份表清单——两份清单一定会发散。
 
 seekdb 为业务事实来源。关联、日期、状态和归属使用关系字段；领域扩展字段与模型输出快照采用经目标版本验证的 JSON 存储，并带结构版本，不使用 PostgreSQL 专属 JSONB 类型或语法。历史计划版本和执行记录不随重排覆盖。首版可按目标档案、当前计划、近期记录与会话摘要组织上下文；未来可评估 seekdb 自带的向量与全文检索，无需现在增加语义检索范围。
 
@@ -60,7 +60,7 @@ seekdb 为业务事实来源。关联、日期、状态和归属使用关系字�
 
 Redis 负责队列传递，不作为唯一业务记录。采用事务内作业记录与 outbox，分发器重试投递；投递成功但标记失败可能重复发送，因此 Worker 必须基于作业 ID、状态锁定和唯一约束防止重复提交业务结果。定期检查失联作业，有限重试，保留错误状态。无法保证外部模型调用只收费一次，需区分业务提交幂等与供应商请求幂等。
 
-模型调用设置超时、重试上限、并发和用量限额；预算数额按用户要求暂缓。调用日志保存模型、提示版本、用量与错误，避免默认记录密钥或完整私人内容。
+模型调用设置超时、重试上限、并发和用量限额；预算数额按用户要求暂缓。LangChain chat model 的 `max_retries` 默认为 6，与 Celery 重试叠加会产生乘法放大，必须显式设置并纳入单次作业的统一调用预算。调用日志保存模型、提示版本、用量与错误，避免默认记录密钥或完整私人内容；**LangSmith 追踪默认关闭**，示例配置不得开启——用户目标内容属于私人数据，不默认外发到第三方服务。
 
 账号采用自由注册、账号标识加密码和服务端会话，Cookie 设置 HttpOnly、Secure 及适当 SameSite，写请求校验来源/CSRF。注册和登录分别限流；会话、附件、作业事件和 Agent 工具都检查用户归属。
 
@@ -85,4 +85,6 @@ Redis 负责队列传递，不作为唯一业务记录。采用事务内作业�
 - [Alembic](https://alembic.sqlalchemy.org/en/latest/)
 - [Celery 任务与幂等](https://docs.celeryq.dev/en/stable/userguide/tasks.html)
 - [Celery Redis 队列](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html)
+- [LangGraph 图 API](https://docs.langchain.com/oss/python/langgraph/graph-api)
+- [LangChain chat model 与 `init_chat_model`](https://docs.langchain.com/oss/python/langchain/models)
 - [seekdb 官方仓库及 SQL/Python 接入说明](https://github.com/oceanbase/seekdb)
