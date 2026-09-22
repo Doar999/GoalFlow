@@ -26,11 +26,33 @@
 
 1. **提出**：在 Issue 或 RFC 中写明要改什么、为什么、影响哪些模块与页面。破坏性变更必须显式标注。
 2. **批准**：由集成负责人批准。影响产品行为的，还需产品决策人确认。
-3. **单独 PR**：契约变更**独立成 PR**，只包含 schema、枚举、错误码、迁移、生成物和相应契约测试，**不夹带业务实现**。
+3. **单独 PR**：契约面的变更**独立成 PR**，不与业务模块混在同一个 PR 里。
 4. **广播**：合并后通知团队，受影响的人 rebase 自己的分支并重新生成前端类型。
 5. **消费**：其他 PR 基于新契约继续。
 
-拆成两个 PR 会多花十几分钟，换来的是：任何人 rebase 后一眼能看出"契约变了"还是"别人的业务逻辑变了"。混在一起时，这个区分就没了。
+分开的目的是**可区分性**：任何人 rebase 后一眼能看出"契约变了"还是"别人的业务逻辑变了"。混在一起时，这个区分就没了。
+
+### 契约面与业务模块
+
+| 面 | 路径 | 含义 |
+| --- | --- | --- |
+| 契约面 | `openapi/`、`backend/migrations/`、`backend/src/goalflow/contracts/`、`backend/src/goalflow/api/` | 对外可见的接口形状、错误码、枚举与数据库结构 |
+| 业务模块 | `backend/src/goalflow/{auth,goals,planning,scheduling,agent,jobs}/`、`frontend/src/features/` | 业务规则与功能实现 |
+| 中性 | `backend/src/goalflow/{__init__.py,core,db,tools}/`、`frontend/src/{app,shared}/`、`backend/tests/`、`scripts/`、`docs/` | 两面都不算 |
+
+`frontend/src/shared/api/generated/` 是生成物，随契约一起变更，不单独判定。
+
+`backend/src/goalflow/api/` 属于**契约面**，因为 `openapi/goalflow.yaml` 就是从它导出的生成物。把生成物和它的源分在对立两侧，会让任何改接口的 PR 同时撞上本节与契约漂移检查，两者必有一个失败。这一归属依赖第 8 节的约束——api 层只做权限校验与调用模块 Interface，业务编排在模块内部。
+
+上表三份名单**之外**的 `backend/src/goalflow/` 子包与 `frontend/src/` 目录一律按业务模块处理。新增包时如果它属于契约面或中性，**必须显式补进名单**：默认放行会让门禁在无人察觉的情况下失效。
+
+### `contract-change` 标签
+
+确有必要同时改两面时（典型场景：新建工程骨架、一次性重构模块边界），给 PR 打 `contract-change` 标签即放行，CI 会在 Step Summary 中列出本次的契约面改动清单，使其在评审页面上一眼可见。
+
+标签只影响 **CI 是否拦截**，不影响谁有权批准——[00-workflow.md](00-workflow.md) 第 6 节"公共契约必须由契约负责人以外的至少 1 人批准"照常适用。
+
+判定实现在 `.github/workflows/ci.yml` 的 `pr-hygiene` 作业；这套划分的理由与被否决的替代方案见 [RFC 0002](../rfcs/0002-contract-pr-gate.md)。
 
 ## 4. 错误契约（首版固定形状）
 
