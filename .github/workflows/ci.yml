@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    # 默认只触发 opened / synchronize / reopened。补上 labeled / unlabeled，
+    # 否则给 PR 打 contract-change 标签不会重跑 CI，放行出口形同虚设。
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -92,34 +95,69 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 契约变更不得与业务实现混在同一 PR
+      - name: 契约面变更不得与业务模块混在同一 PR
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          # 标签名经 env 传入而非直接插值进脚本，避免标签名里的字符被当成 shell 代码执行。
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
-          CHANGED="$(git diff --name-only "$BASE" "$HEAD")"
+
+          # 三点式：从 merge-base 起算，只含本 PR 自己引入的改动。
+          # 两点式会把 PR 开出之后合进 main 的别人的提交反向算进来。
+          CHANGED="$(git diff --name-only "$BASE...$HEAD")"
           echo "本次改动文件："
           echo "$CHANGED"
 
           contract=0
           impl=0
+          contract_files=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              openapi/*|backend/migrations/*|backend/src/goalflow/contracts/*)
-                contract=1 ;;
+              # 生成物随契约一起变更，不单独判定。必须排在前端的规则之前。
               frontend/src/shared/api/generated/*)
-                # 生成物随契约一起变更，不算业务实现
                 ;;
+              # 契约面：对外可见的接口形状、错误码、枚举与数据库结构。
+              # api/ 在内，因为 openapi/goalflow.yaml 就是从它导出的生成物。
+              openapi/*|backend/migrations/*|backend/src/goalflow/contracts/*|backend/src/goalflow/api/*)
+                contract=1
+                contract_files="${contract_files}- \`${f}\`"$'\n'
+                ;;
+              # 中性：工程骨架与基础设施，两面都不算。
+              # 工程骨架必然横跨多处，把它们算进任何一面都会产生无意义的拦截。
+              backend/src/goalflow/__init__.py|backend/src/goalflow/core/*|backend/src/goalflow/db/*|backend/src/goalflow/tools/*|frontend/src/app/*|frontend/src/shared/*)
+                ;;
+              # 业务模块。
+              backend/src/goalflow/auth/*|backend/src/goalflow/goals/*|backend/src/goalflow/planning/*|backend/src/goalflow/scheduling/*|backend/src/goalflow/agent/*|backend/src/goalflow/jobs/*|frontend/src/features/*)
+                impl=1
+                ;;
+              # 兜底：上面三份名单之外的 goalflow 子包与前端源码一律按业务模块处理。
+              # 将来新增的包如果属于契约面或中性，必须显式补进上面的名单——
+              # 默认放行会让门禁在无人察觉的情况下失效。
               backend/src/goalflow/*|frontend/src/*)
-                impl=1 ;;
+                impl=1
+                ;;
             esac
           done <<< "$CHANGED"
 
+          # 契约面改动在评审页面上一眼可见，不必逐个文件翻 diff。
+          if [ "$contract" -eq 1 ]; then
+            {
+              echo "### 本次 PR 的契约面改动"
+              echo
+              printf '%s' "$contract_files"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           if [ "$contract" -eq 1 ] && [ "$impl" -eq 1 ]; then
-            echo "::error::公共契约变更（openapi / migrations / contracts）必须单独成 PR，不得夹带业务实现。见 docs/engineering/01-contracts-and-ownership.md 第 3 节。"
-            exit 1
+            if printf '%s' "$LABELS" | tr ',' '\n' | grep -qxF 'contract-change'; then
+              echo "::notice::PR 带 contract-change 标签，允许契约面与业务模块同时出现。契约面改动清单见 Step Summary。"
+            else
+              echo "::error::契约面（openapi / migrations / contracts / api）变更不得与业务模块混在同一 PR。确有必要时给 PR 打 contract-change 标签放行。见 docs/engineering/01-contracts-and-ownership.md 第 3 节。"
+              exit 1
+            fi
           fi
           echo "通过"
 
@@ -129,7 +167,8 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          MODIFIED="$(git diff --name-only --diff-filter=MD "$BASE" "$HEAD" -- 'backend/migrations/versions/*' || true)"
+          # 同样用三点式：两点式会把别人新增的迁移反向判成本 PR 删除了迁移。
+          MODIFIED="$(git diff --name-only --diff-filter=MD "$BASE...$HEAD" -- 'backend/migrations/versions/*' || true)"
           if [ -n "$MODIFIED" ]; then
             echo "::error::检测到对已存在迁移的修改或删除。修正请改为新增迁移，见 docs/engineering/01-contracts-and-ownership.md 第 6 节。"
             echo "$MODIFIED"
