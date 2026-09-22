@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T02（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | Doar（集成与交付） |
-| 状态 | 进行中 |
+| 状态 | 评审中 |
 | 更新日期 | 2026-09-22 |
-| 相关 PR | #（待填）；前置 [RFC 0002](../rfcs/0002-contract-pr-gate.md) #3 |
+| 相关 PR | #4；前置 [RFC 0002](../rfcs/0002-contract-pr-gate.md) #3（已合并） |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -202,6 +202,10 @@ RFC 0002 已随 PR #3 合并，原先记在这里的 `pr-hygiene` 阻塞（决�
   `baseUrl` 必须是绝对 URL，改回 `"/"` 会让所有前端测试挂在 `ERR_INVALID_URL`；
   `shared/test/setup.ts` 的 `server.listen()` 必须在模块顶层，挪进 `beforeAll`
   会让 MSW 补丁晚于 openapi-fetch 抓取 `globalThis.fetch`，请求直接穿透到真实网络。
+- **前端入口在 `src/app/main.tsx`，不在 Vite 模板惯用的 `src/main.tsx`。**
+  两个原因：`09-frontend-architecture.md` 规定 `app/` 承载"启动、路由、providers"；
+  以及 RFC 0002 的门禁把 `frontend/src/app/*` 与 `frontend/src/shared/*` 之外的
+  `frontend/src/*` 一律判为业务模块，放在根下会让每个动它的 PR 都被拦。
 - **`errors.ts` 的 `FALLBACK_MESSAGE_BY_CODE` 是故意写成 `Record<ApiErrorCode, string>` 的。**
   后端新增错误码、重新生成类型之后，这里漏一个就编译失败。不要为了省事改成
   `Partial<Record<...>>` 或加默认分支——那会让契约变更悄悄溜过前端。
