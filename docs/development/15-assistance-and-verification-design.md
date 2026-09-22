@@ -50,8 +50,11 @@ run_assistance(command: AssistanceCommand) -> AssistanceArtifact
 | 任务生成 | 能力不可用时不生成依赖该能力的验证策略，改用可执行的替代标准 |
 | 任务开始前 | 展示本任务需要的提交形式与当前能力限制 |
 | 验证执行 | 门控实际调用；缺失能力直接产出 `insufficient_evidence` |
+| 默认配置切换 | 重算能力视图；**不改写已冻结的 `verification_policy`**，受影响的未开始任务在"任务开始前"提示中显示当前模型不满足其提交形式 |
 
 能力缺失的结果是 `insufficient_evidence` 加对应原因码，**不是 `error`，不进入自动重试**。
+
+用户换用能力更少的模型（例如从支持读图换到不支持）时，已冻结的验证策略保持不变，只是如实降级：验证执行时门控命中，产出 `insufficient_evidence` + `vision_unavailable`。不追溯改写策略，是因为"完成要求在任务开始前可见、不在提交后变动"是已确认的产品规则（见 [今日执行页](../product/01-today-page.md) 的反馈细则）；换模型不该成为事后提高或降低标准的入口。用户的出路是换回有该能力的配置，或按第 6 节改为提交文字说明转入 `self_report`。
 
 ## 5. 链接抓取安全
 
@@ -112,6 +115,7 @@ run_assistance(command: AssistanceCommand) -> AssistanceArtifact
 - 伪装扩展名（内容为 HTML 的 `.png`）被拒；`.svg` 被拒。
 - 第二个用户下载他人 artifact、读取他人验证结果与抓取快照，全部被拒。
 - 无 `vision` 能力提交图片得到 `insufficient_evidence` 且不触发重试。
+- 任务生成后把默认配置换成无 `vision` 的模型，该任务的 `verification_policy` 不变，任务开始前的提示显示当前模型不满足提交形式。
 - 响应体超过 2 MB 的链接被安全中断，不发生内存耗尽。
 - `agent_output` 无法作为同一任务的验证材料，接口层直接拒绝。
 - 同一任务上 `self_report` 与 `deterministic_scoring` 的结果在查询中可区分。

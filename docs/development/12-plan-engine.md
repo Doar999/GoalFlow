@@ -32,6 +32,7 @@ activate_plan(command: ActivatePlanCommand) -> ActivationResult
 4. Pydantic 校验结构、ID 引用、日期和枚举。
 5. 领域规则检查阶段逻辑、里程碑证据、任务完成标准及安全限制。
 6. 计划规则检查依赖无环、首周预算、成功标准覆盖、时间范围、执行者和能力可用性。
+   同时校验开始日可用性：开始日的剩余容量必须能容纳该日安排的至少一项任务（不可拆分任务取 `expected_minutes`，可拆分任务取 `minimum_session_minutes`）。一项都容纳不下时，草稿照常保存，并在结果中带上建议前移到的下一个可容纳日期与原因码，由用户在预览中确认；不在服务端静默改写 `start_date`。
 7. 仅对结构错误允许一次有限修复；真实预算或期限冲突直接返回结构化冲突。
 8. 提交前重新检查输入 revision，有效时原子保存 draft 计划版本、阶段、里程碑和 proposed 任务批次。
 
@@ -45,13 +46,15 @@ activate_plan(command: ActivatePlanCommand) -> ActivationResult
 
 正常滚动展开只追加新的 task batch。以下情况需要新 plan version：阶段或里程碑变化、既有核心依赖变化、路线方法变化、成功标准或硬期限变化。既有任务内容调整创建 task_spec；任务日期排序变化创建 agenda revision。
 
+**维持型目标的计划没有终点。** `horizon_end` 对 `kind=maintenance` 可空，滚动展开按 [目标生命周期与结束实现基线](17-goal-lifecycle-design.md) 的 `review_period` 持续进行，没有"计划跑完"这个状态——这与维持型永不进入 `completed` 一致。其里程碑退化为周期性回顾点：每个回顾周期一个，验收方式就是该周期的成功标准，不表达一次性成果。滚动的唯一终止条件是目标离开 `active`（暂停或 `stopped`）。达成型目标的 `horizon_end` 仍然非空，展开不得越过它。
+
 ## 4. 时间估算和任务校验
 
 `TaskSpec` 保存 expected/minimum/maximum minutes、confidence、can_split、minimum_session_minutes、earliest_date 和 latest_date。要求：
 
 - minimum <= expected <= maximum。
 - 不可拆分任务的 expected 不能超过其所有允许日期的最大可用额度，否则返回冲突。
-- 可拆分任务的最小单次时长不能大于任一可安排日期的额度。
+- 可拆分任务的 minimum_session_minutes 不能大于其所有允许日期中的最大可用额度，否则该任务无法被分配任何有效片段，返回冲突。判定口径与上一条一致，取允许日期范围内的最大值；不要写成"每一个允许日期都必须满足"——允许日期额度可以为零（见 [多目标协调](../product/02-multi-goal-coordination.md) 的时间额度规则），逐日全称判定会让校验永远失败。
 - 用户任务、Agent 任务和协作任务分别计算用户投入；后台模型等待时间不计入用户时间。
 - 任务必须引用阶段；承担里程碑证据的任务还需引用 milestone。
 
@@ -61,7 +64,9 @@ activate_plan(command: ActivatePlanCommand) -> ActivationResult
 
 按用户本地日期检查活动计划的 detailed_through_date。当该日期早于 `today + 3 days` 时，以最后有效批次之后的连续七日作为新窗口创建去重作业。
 
-展开输入包括当前里程碑、有效执行记录、验证结果、未完成任务、最新时间预算和计划 revision。已经完成或进行中的任务只作为上下文，不能被新批次替换。新批次与现有未完成任务一起由排期模块检查预算；若容量不足，保存冲突，不堆积到每日安排。
+展开输入包括当前里程碑、有效执行记录、验证结果、未完成任务、最新时间预算和计划 revision。已经完成或进行中的任务只作为上下文，不能被新批次替换。
+
+`TaskWindowSnapshot` 还必须包含**本计划此前所有批次已产生的学习单元及其已安排的复习日期**。复习间隔是跨批次的硬约束（默认 1、3、7、14 天，见 [三类领域专业规则](../product/11-domain-rules.md) 第 3 节），而单个窗口只有七天——不把已有单元和复习历史带进快照，第二个批次就无法判定 14 天间隔，约束会静默失效。历史按 `(unit_key, 首次学习日期, 已安排复习日期列表)` 组织，只读，不随新批次改写。新批次与现有未完成任务一起由排期模块检查预算；若容量不足，保存冲突，不堆积到每日安排。
 
 同一窗口使用 `(owner_id, plan_version_id, window_start, input_progress_revision)` 作为业务去重依据。Worker 晚返回时重新检查计划和进度 revision，过期结果不得发布。
 
@@ -100,6 +105,7 @@ activate_plan(command: ActivatePlanCommand) -> ActivationResult
 ## 9. 测试重点
 
 - 首次生成只创建七日详细批次，阶段和里程碑覆盖完整路线。
+- 开始日剩余容量大于零但容纳不下任何一项任务时，草稿仍保存，返回建议前移日期而不是静默改写 `start_date`。
 - 同一窗口由 Beat 和页面同时触发时只有一个有效批次。
 - 预算、依赖和成功标准检查不受模型自报的“可行”结论影响。
 - 生成期间时间预算或计划 revision 变化使结果 stale。

@@ -15,8 +15,9 @@ backend/
     goals/            目标、档案、路线
     planning/         计划、阶段、里程碑、任务批次、apply_change
     scheduling/       时间预算与排期计算（纯函数）
-    agent/            自研工作流、领域策略、模型适配
-      providers/      OpenAI / Anthropic 官方 SDK 薄封装
+    agent/            Agent 步骤、领域策略、模型接入
+      graphs/         LangGraph StateGraph 定义（短生命周期，无 checkpointer）
+      models/         LangChain chat model 构造与统一调用 Interface
     jobs/             outbox、Celery 任务、作业事件
     api/              FastAPI 路由与依赖
   migrations/
@@ -47,7 +48,7 @@ frontend/src/
 
 - 目标 Python 3.11+，Ruff 负责格式化与 lint，行宽 120。
 - 公共函数、Pydantic 模型、Interface 必须有类型注解；类型检查在 CI 中阻塞。
-- 命名用 `CONTEXT.md` 的英文术语：`goal_profile`、`plan_envelope`、`task_batch`、`check_in`、`verification_result`。不要出现 `user_plan`、`daily_log` 这类同义自造词。
+- 命名用 `CONTEXT.md` 的英文术语：`goal_profile`、`task_batch`、`checkin`、`verification_result`、`plan_envelope`。不要出现 `user_plan`、`daily_log` 这类同义自造词。执行记录固定拼作 `checkin`（表 `checkins`、字段 `checkin_id`、接口 `/api/tasks/{id}/checkins`），不写 `check_in`。
 - 业务异常继承统一基类并携带错误码，由全局异常处理器转成 [统一错误结构](01-contracts-and-ownership.md)。**不要在路由里手写错误 JSON。**
 - 排期计算保持纯函数：输入快照、输出安排或冲突，不访问数据库、不调用模型。这让它可以被穷举测试。
 - 时间一律存 UTC 并携带用户 IANA 时区；对外接口用明确的本地日期字符串，禁止隐式转换。

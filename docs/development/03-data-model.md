@@ -36,14 +36,14 @@ goal_profile_drafts 是可修改的交互状态，goal_profiles 是用户确认�
 
 | 表 | 关键字段 | 约束或用途 |
 | --- | --- | --- |
-| plan_versions | id, owner_id, goal_id, version_no, profile_id, route_id, based_on_version_id, status, start_date, horizon_end, detailed_through_date, strategy_version, reason | (goal_id, version_no) 唯一；战略结构不可变；status: draft/active/superseded/discarded |
+| plan_versions | id, owner_id, goal_id, version_no, profile_id, route_id, based_on_version_id, status, start_date, horizon_end, detailed_through_date, strategy_version, reason | (goal_id, version_no) 唯一；战略结构不可变；status: draft/active/superseded/discarded。horizon_end 对 kind=achievement 非空且展开不得越过；对 kind=maintenance 可空，表示持续滚动无终点 |
 | plan_phases | id, owner_id, plan_version_id, phase_key, rank, title, outcome, exit_criteria_json, duration_estimate_json | (plan_version_id, phase_key) 唯一；保存完整阶段结构 |
 | plan_milestones | id, owner_id, plan_version_id, phase_id, milestone_key, rank, title, success_criteria_json, target_window_json | (plan_version_id, milestone_key) 唯一；表达可检查的阶段结果 |
 | task_batches | id, owner_id, plan_version_id, window_start, window_end, input_progress_revision, generation_policy_version, status, reason | 同一计划、窗口和进度输入只产生一个有效批次；正常滚动不创建新计划版本 |
 | tasks | id, owner_id, goal_id, execution_status, remaining_minutes_estimate, progress_revision, revision | 稳定的任务身份及当前执行投影；重排和计划修订不复制完成记录 |
-| task_specs | id, owner_id, task_id, spec_no, title, instructions, completion_criteria_json, executor, expected_minutes, minimum_minutes, maximum_minutes, estimate_confidence, earliest_date, latest_date, can_split, minimum_session_minutes, verification_policy | (task_id, spec_no) 唯一；不可变内容版本；minimum <= expected <= maximum；latest_date 非空，空值等于默认允许无限延期 |
+| task_specs | id, owner_id, task_id, spec_no, title, instructions, completion_criteria_json, executor, expected_minutes, minimum_minutes, maximum_minutes, estimate_confidence, earliest_date, latest_date, can_split, minimum_session_minutes, verification_policy, domain_payload_json | (task_id, spec_no) 唯一；不可变内容版本；minimum <= expected <= maximum；latest_date 非空，空值等于默认允许无限延期。domain_payload_json 存领域扩展事实并带结构版本，学习领域用它保存学习单元标识与被复习单元的引用——跨批次复习间隔判定依赖这两项持久化 |
 | plan_task_memberships | id, owner_id, plan_version_id, task_batch_id, phase_id, milestone_id, task_id, task_spec_id | (plan_version_id, task_id) 唯一；任务必须属于阶段，里程碑引用可选 |
-| task_dependencies | id, owner_id, plan_version_id, predecessor_task_id, successor_task_id, required_outcome, goal_link_id | 一个版本内边唯一；required_outcome 区分执行完成和验证通过 |
+| task_dependencies | id, owner_id, plan_version_id, predecessor_task_id, successor_task_id, required_outcome, goal_link_id | 一个版本内边唯一；required_outcome 区分执行完成和验证通过。取值受领域策略约束，健身领域不允许 verification_passed（约束 `fitness_dependency_outcome`，见 [领域策略包与约束校验实现基线](16-domain-policy-design.md) 第 2 节） |
 | change_proposals | id, owner_id, goal_id, base_versions_json, input_revision, proposed_patch_json, impact_json, change_class, status, reason, accepted_at, applied_at | status: pending/applied/rejected/stale；接受和应用在同一事务完成 |
 
 计划版本固定阶段、里程碑和核心依赖；正常滚动展开只追加 task_batch。任务内容更新创建 task_spec；每日顺序变化只创建每日安排版本。阶段、里程碑、核心方法或既有核心依赖变化才创建新计划版本。
@@ -77,13 +77,14 @@ goal_profile_drafts 是可修改的交互状态，goal_profiles 是用户确认�
 | --- | --- | --- |
 | checkins | id, owner_id, task_id, task_spec_id, local_date, outcome, actual_minutes_delta, remaining_minutes_after, difficulty_code, note, supersedes_id, client_request_key | 追加式反馈；outcome 含 completed/partial/deferred_today/blocked；更正追加记录，统计取有效链末端 |
 | task_blockers | id, owner_id, task_id, source_checkin_id, blocker_kind, description, status, resolved_at | 持久阻碍单独管理；开放阻碍参与 blocked 计算 |
-| verification_results | id, owner_id, task_id, task_spec_id, checkin_id, status, basis_json, policy_version, evaluator, reason | status: pending/passed/not_met/insufficient/error；记录实际检查依据 |
+| verification_results | id, owner_id, task_id, task_spec_id, checkin_id, status, basis_json, policy_version, evaluator, reason | status: not_required/pending/passed/not_met/insufficient_evidence/error；记录实际检查依据 |
 | artifacts | id, owner_id, task_id, kind, storage_key_or_url, source_json, status | 私有附件、用户产出或 Agent 辅助产物；下载检查权限 |
 | checkin_artifacts | owner_id, checkin_id, artifact_id | 明确哪份反馈引用哪个材料 |
 | conversations | id, owner_id, goal_id, task_id, revision | 可选关联目标或任务，保留明确范围 |
 | messages | id, owner_id, conversation_id, role, content, job_id, client_request_key | 确定顺序及防重复提交 |
 | context_summaries | id, owner_id, conversation_id, through_message_id, summary, source_revision | 可重建摘要，不作为目标事实的唯一来源 |
 | daily_reviews | id, owner_id, local_date, version_no, day_rating, estimate_feedback, constraint_note | 可跳过的日级回顾；(owner_id, local_date, version_no) 唯一 |
+| goal_review_results | id, owner_id, goal_id, period_start, period_end, review_period, outcome, criteria_snapshot_json, policy_version, evaluated_at | 维持型目标的周期回顾结果；(owner_id, goal_id, period_start) 唯一；outcome: on_track/off_track/interrupted。与日级 daily_reviews 是两回事，不复用；结果不写入 goals.status |
 
 用户完成练习但得分不足时，可以 execution_status=completed，同时验证结果 not_met。只要求练习完成的后续任务可以继续；要求掌握度达标的依赖继续阻塞。用户可更正误操作；更正若影响已启动的后继任务，需要提示和调整，不能删除后继历史。
 

@@ -50,7 +50,7 @@
 
 计划模块 expose apply_change(actor, proposal, expected_versions) → applied_or_conflict。封装权限、变更判级、确认、锁定、版本写入与审计。HTTP 路由、后台执行和模型工具均只能通过这条业务路径提交变化。
 
-Agent 模块 expose run_step(step_kind, input_snapshot) → validated_candidate。返回结构化候选或可解释错误，不返回任意 SQL，也不自行提交计划。
+Agent 模块 expose run_step(step_kind, input_snapshot) → validated_candidate。内部由对应的 LangGraph 图执行，图在本次调用内跑完即结束，不持有跨调用状态。返回结构化候选或可解释错误，不返回任意 SQL，也不自行提交计划。调用方不感知图的节点划分，换图不改本契约。
 
 ## 分工与合并顺序
 
@@ -60,6 +60,15 @@ Agent 模块 expose run_step(step_kind, input_snapshot) → validated_candidate�
 4. 公共 schema 或错误码变更同时更新前端类型及契约测试；跨模块不得直接改对方状态表以绕过 Interface。
 5. 首条集成验收链：注册登录 → 配置模型 → 创建目标 → 档案确认 → 路线选择 → 草稿检查 → 启用 → 今日任务 → 反馈。之后增加多目标冲突、修订与恢复场景。
 
-## 仍需产品决策的默认值
+## 默认值状态
 
-允许移动日期范围、投入变化阈值和提醒时机。实现前选择默认值并记录；当前可通过输入字段表达，不擅自将建议视为用户确认。路线数量、开始日期、滚动细化及目标优先级规则已确认，见产品文档 02、03 与 08。
+下列默认值均已确认，实现时直接采用，不需要另行选择，也不需要 RFC：
+
+| 项 | 结论 | 出处 |
+| --- | --- | --- |
+| 可移动日期范围 | `earliest_date`/`latest_date` 由计划生成时推导，`latest_date` 非空 | [目标关联、依赖与解除规则](../product/13-goal-links.md) 第 5 节；推导顺序见 [18-goal-link-design.md](18-goal-link-design.md) 第 4 节 |
+| "明显增加投入"阈值 | 相对最近一次批准的周投入基线，累计增量同时超过 10% 与 30 分钟；另有使共享周预算超额的调整一律确认 | [13-goal-links.md](../product/13-goal-links.md) 第 6 节；参数见 [18-goal-link-design.md](18-goal-link-design.md) 第 5 节 |
+| 提醒时机 | 首版不做主动通知，只做状态呈现；不请求浏览器通知权限、不做 Web Push 与邮件提醒 | PRD D11；[今日执行页](../product/01-today-page.md)"状态呈现与提醒范围" |
+| 路线数量、开始日期、滚动细化、目标优先级 | 已确认 | 产品文档 02、03、08 |
+
+仍需在实现前收敛的只剩 OpenAI / Anthropic 具体 API 子集与模型能力门槛，见 [开发任务与验收](06-delivery-plan.md) 第 6 节。
