@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 安装开发依赖与 Git 钩子。
 #
-# 前置：Git、Python 3.11+、uv、Node.js 20+、pnpm。
+# 前置：Git、Python 3.11+、uv、Node.js 24+、pnpm。
 # 用法：bash scripts/install.sh
 
 set -euo pipefail

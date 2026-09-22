@@ -74,7 +74,7 @@ scripts/api-generate.sh
 
 | 编号 | 决策 / 假设 | 依据 | 影响范围 | 是否需要升级为 RFC |
 | --- | --- | --- | --- | --- |
-| A1 | Python 目标 `>=3.11`，CI 与 `.python-version` 固定 3.11；Node 20，pnpm 9 | AGENTS.md 技术基线与现有 CI 矩阵 | 全项目 | 否 |
+| A1 | Python 目标 `>=3.11`，CI 与 `.python-version` 固定 3.11；Node 24，pnpm 9 | AGENTS.md 技术基线；Node 版本见 A11 | 全项目 | 否 |
 | A2 | LangChain 1.x / LangGraph 1.x 系列，`pyproject.toml` 写主版本约束，精确版本由 `uv.lock` 固定；本次只锁版本不写任何 Agent 代码 | 交付计划第 6 节要求在 T02 收敛 | T08、T14 | 否 |
 | A3 | T02 只提供 `GET /api/health` 一个端点，用于让 OpenAPI 导出与漂移检查有真实对象 | 需要至少一个路由才能跑通生成链路 | 公共契约（新增一个端点） | 否 |
 | A4 | 幂等与 `expected_revision` 本次只交付**契约形状**：`contracts/` 下的请求模型、错误码与 FastAPI 依赖，以及它们的单元测试。去重存储与版本比对的执行属 T03 / T07 | 无数据库时无法实现执行语义，强行实现会写死错误假设 | 跨模块可见（后续模块直接复用这套形状） | 否 |
@@ -84,60 +84,124 @@ scripts/api-generate.sh
 | A8 | `ErrorCode` 在 05-module-contracts 的六个错误码之外补 `VALIDATION_FAILED`、`UNAUTHENTICATED`、`FORBIDDEN`、`NOT_FOUND`、`INTERNAL_ERROR`、`IDEMPOTENCY_KEY_CONFLICT` 六项 | 前五项是任何 HTTP 接口都会产生的情形，第六项直接对应 01-contracts 第 5 节"相同 key 不同内容返回冲突" | 公共契约 | 否 |
 | A9 | `scripts/check.sh` 的 mypy 调用补 `--config-file backend/pyproject.toml` | mypy 只在 cwd 找配置，而脚本的 cwd 是仓库根，`strict = true` 原本被静默忽略、类型检查空转。已用临时违例实测确认 | 工程流程 | 否 |
 | A10 | ruff 关闭 `RUF001`/`RUF002`/`RUF003` | 这三条把中文全角标点判为"疑似打错的西文标点"，而 AGENTS.md 第 139 行要求中文直接用中文字符 | 后端代码风格 | 否 |
+| A11 | CI 的 Node 由 20 升到 24，`scripts/install.sh` 与 `CONTRIBUTING.md` 的前置说明同步 | vitest 5 的 engines 为 `^22.12.0 \|\| ^24.0.0 \|\| >=26.0.0`、vite 8 为 `^20.19.0 \|\| >=22.12.0`，Node 20 上前端测试根本起不来；且 Node 20 已于 2026 年 4 月 EOL。24 为当前 Active LTS，与已合并的 PR #1（action 运行时升 Node 24）一致 | 全项目工具链 | 否，产品决策人已确认 |
+| A12 | 前端 API 客户端的 `baseUrl` 取 `window.location.origin` 而非 `"/"`；MSW 的 `server.listen()` 放测试 setup 模块顶层而非 `beforeAll` | 前者：fetch 在 jsdom/undici 下要求绝对 URL，相对值抛 `ERR_INVALID_URL`。后者：openapi-fetch 在 `createClient` 时就捕获 `globalThis.fetch` 的引用，`beforeAll` 打补丁太晚，请求会穿透到真实网络 | 前端 shared/api 与测试基建 | 否 |
 
 A3 与 A4 都触及公共契约。按 [00-workflow.md](../engineering/00-workflow.md) 第 3 节，它们影响公共契约本应走 RFC；本次判断为不需要，理由是：A3 新增的是一个无业务语义的健康检查端点，A4 是**把已确认的第 5 节全局约束翻译成代码形状**而非做出新选择。如果评审认为 A4 的具体字段命名构成新决策，应退回走 RFC。
 
 ## 5. 验收场景
 
-- [ ] `bash scripts/install.sh` 在干净环境可完成后端与前端依赖安装
-- [ ] `bash scripts/check.sh` 通过，且后端、前端、契约漂移三项均**不再显示跳过**
-- [ ] `bash scripts/test.sh` 通过，后端与前端均有真实用例被执行
-- [ ] `bash scripts/test.sh e2e` 通过（`backend/tests/e2e/` 有真实用例，不是空目录）
-- [ ] `bash scripts/api-generate.sh` 连续执行两次，产物逐字节一致
-- [ ] 契约漂移真的会被拦下：改动路由或 Pydantic 模型后不重新生成，`check.sh` 失败
-- [ ] 请求未知路径返回统一错误结构，含 `code`、`message`、`request_id`、`retryable`、`details`
-- [ ] 未捕获异常返回统一错误结构，响应体与日志中不出现堆栈
-- [ ] 每个响应带 `request_id`，且与错误体中的值一致
-- [ ] `contracts/` 包不 import 任何业务模块（有测试断言）
-- [ ] 错误码为单点定义，重复定义或拼写漂移会被测试发现
-- [ ] 前端：错误映射把统一错误体转成可展示结果，未知 `code` 有兜底
-- [ ] 前端：`tsc --noEmit` 在严格模式下通过，无新增 `any` / `!` / `@ts-ignore`
-- [ ] 锁文件漂移：`uv lock --check` 与 `pnpm install --frozen-lockfile` 均通过
+- [x] `bash scripts/install.sh` 在干净环境可完成后端与前端依赖安装
+- [x] `bash scripts/check.sh` 通过，且后端、前端、契约漂移三项均**不再显示跳过**
+- [x] `bash scripts/test.sh` 通过，后端与前端均有真实用例被执行
+- [x] `bash scripts/test.sh e2e` 通过（`backend/tests/e2e/` 有 5 条真实用例，不是空目录）
+- [x] `bash scripts/api-generate.sh` 连续执行两次，产物逐字节一致
+- [x] 契约漂移真的会被拦下：改动路由不重新生成时 `check.sh` 退出码 1 并打印 diff
+- [x] 请求未知路径返回统一错误结构，含 `code`、`message`、`request_id`、`retryable`、`details`
+- [x] 未捕获异常返回统一错误结构，响应体中不出现堆栈与内部消息
+- [x] 每个响应带 `request_id`，且与错误体中的值一致、两次请求不重复
+- [x] `contracts/` 包不 import 任何业务模块（`test_package_isolation.py` 用 AST 断言）
+- [x] 错误码为单点定义，且每个码都有 HTTP 状态映射（`test_error_contract.py`）
+- [x] 前端：错误映射把统一错误体转成可展示结果，未知 `code` 有兜底
+- [x] 前端：`tsc --noEmit` 在严格模式下通过，无新增 `any` / `!` / `@ts-ignore`
+- [x] 锁文件漂移：`uv lock --check` 与 `pnpm install --frozen-lockfile` 均通过
+
+未覆盖的一条，说明如下：校验错误不回显原始输入（`test_error_handling.py` 的
+`test_validation_error_reports_fields_without_echoing_input`）虽已通过，但它只证明了
+FastAPI 默认错误里的 `input` 字段被剥掉，**没有覆盖嵌套模型与列表下标**的情形。
+T03 加入第一个真实写接口时应补一条带嵌套请求体的用例。
 
 ## 6. 进展
 
-- 已完成：分支 `feat/T02-engineering-foundation` 建立；本交接卡建立；依赖版本已从 PyPI 查得（见第 7 节）。
-- 进行中：后端工程骨架。
-- 未开始：前端工程骨架、OpenAPI 导出与类型生成、`.env.example` 同步。
+- 已完成：后端 uv 工程与 `contracts/`、`core/`、`api/`、`tools/`；前端 pnpm 工程与
+  `app/`、`shared/api/`、`shared/test/`；`openapi/goalflow.yaml` 导出与前端类型生成；
+  `.env.example` 与 `core/config.py` 对齐；CI 的 Node 升到 24。第 5 节验收场景全部勾选。
+- 进行中：无。
+- 未开始：无。本工作包的交付内容已齐，等待评审。
 
 ## 7. 验证结果
 
-依赖版本查询（2026-09-22，PyPI 最新稳定版，用于确定 `pyproject.toml` 的约束下界）：
+以下为真实执行输出，环境 Windows 10 + Git Bash，后端 Python 3.11（uv 管理），
+前端 Node 22.13.0 + pnpm 10.6.2。
 
 ```text
-fastapi 0.141.1     uvicorn 0.53.0        pydantic 2.13.5      pydantic-settings 2.15.0
-sqlalchemy 2.0.54   alembic 1.20.0        celery 5.6.3         redis 8.1.0
-pymysql 1.2.3       langchain 1.4.2       langchain-core 1.6.4 langchain-openai 1.6.3
-langchain-anthropic 1.7.2                 langgraph 1.2.12
-ruff 0.16.8         mypy 2.3.1            pytest 9.1.1         pytest-asyncio 1.4.0
-httpx 0.28.1        pyyaml 6.0.3
+$ bash scripts/check.sh
+==> 后端检查
+    $ uv lock --project backend --check        Resolved 93 packages
+    $ ruff format --check backend              27 files already formatted
+    $ ruff check backend                       All checks passed!
+    $ mypy --config-file backend/pyproject.toml backend/src
+                                               Success: no issues found in 18 source files
+==> 前端检查
+    $ pnpm --dir frontend install --frozen-lockfile --ignore-scripts   Done
+    $ pnpm --dir frontend run lint             eslint . （无输出即通过）
+    $ pnpm --dir frontend exec tsc --noEmit    （无输出即通过）
+    $ pnpm --dir frontend exec prettier --check src
+                                               All matched files use Prettier code style!
+==> 契约漂移检查
+    契约一致
+==> 凭证粗筛
+    未发现疑似凭证
+==> 结果
+检查通过
 ```
 
-`scripts/check.sh` 与 `scripts/test.sh` 的完整输出待工程骨架就绪后补。**在此之前不要把本节当作已验证。**
+**没有任何跳过项**——这是本工作包与之前状态的关键差别。
+
+```text
+$ bash scripts/test.sh
+==> 后端测试（all）      52 passed, 1 warning in 1.62s
+==> 前端测试（all）      Test Files 3 passed (3)   Tests 16 passed (16)
+==> 结果                 测试通过
+
+$ bash scripts/test.sh e2e
+==> 后端测试（e2e）      5 passed, 1 warning in 0.42s
+==> 结果                 测试通过
+```
+
+契约漂移检查的**反向验证**（把路由的 `summary` 改掉但不重新生成）：
+
+```text
+$ bash scripts/check.sh
+==> 契约漂移检查
+--- openapi/goalflow.yaml
++++ /tmp/tmp.KrDt5XS7qu
+@@ -87,6 +87,6 @@
+检查未通过        （退出码 1）
+```
+
+`bash scripts/api-generate.sh` 连续执行两次，`openapi/goalflow.yaml` 与
+`frontend/src/shared/api/generated/schema.d.ts` 的 sha256 均一致。
+
+mypy 配置生效性的**反向验证**（临时放一个未标注函数）：不带 `--config-file` 时
+`Success: no issues found`，带上后报 `error: Function is missing a type annotation
+[no-untyped-def]`——决策 A9 的依据。
+
+数据库相关验证：**本工作包不涉及数据库**，未建 `db/` 与 `migrations/`（决策 A5）。
 
 ## 8. 未决问题
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| RFC 0002 未合并前，本工作包的 PR 无法通过 `pr-hygiene` | 阻塞 T02 合并，不阻塞实现 | 集成负责人（RFC 0002 #3） |
 | `scripts/test.sh` 的 `e2e` 分支在 `backend/tests/e2e/` 不存在时会因 pytest 退出码失败 | 本次通过补真实 e2e 用例规避，未改脚本 | 集成负责人 |
-| `09-frontend-architecture.md` 状态为"推荐"，本次落地后应改为"已确认" | 下一个 AI 会话读到"推荐"会再犹豫一次 | 前端负责人；`docs/development/` 不在本工作包可改路径内 |
-| seekdb 驱动与连接串格式仍未定，`.env.example` 的 `GOALFLOW_DATABASE_URL` 保持空占位 | T03 之前必须由 T01 给出 | 数据负责人（T01） |
-| CI 的 `test` 作业尚未接入真实 seekdb | 数据库验收目前无处执行 | T01 结论后由集成负责人补 |
+| `09-frontend-architecture.md` 状态为"推荐"，本次落地已验证其配套选型可用，应改为"已确认" | 下一个 AI 会话读到"推荐"会再犹豫一次 | 前端负责人；`docs/development/` 不在本工作包可改路径内 |
+| 数据库驱动与连接串格式仍未定，`.env.example` 的 `GOALFLOW_DATABASE_URL` 保持空占位 | T03 之前必须给出 | 数据负责人（T01） |
+| CI 的 `test` 作业尚未接入真实数据库 | 数据库验收目前无处执行 | T01 结论后由集成负责人补 |
+| `backend/README.md` 与 `core/config.py` 的注释提到"等 T01 的 seekdb 结论"。若 [RFC 0003](../rfcs/0003-sqlite-as-primary-store.md)（数据库改 SQLite）被接受，这两处连同 `.env.example` 的数据库注释需要回写 | 措辞过期，不影响行为 | 数据负责人；本工作包按"只做 T02"的指示未预先改动 |
+| 未引入 React Router、React Hook Form、Zod、shadcn/ui | `09-frontend-architecture.md` 推荐了它们，但本次没有真实使用场景，装了等于锁一个未经验证的版本 | 前端负责人在 T10 首次使用时锁定版本 |
+
+RFC 0002 已随 PR #3 合并，原先记在这里的 `pr-hygiene` 阻塞（决策 A6）已解除。
 
 ## 9. 给接手者
 
 - **A7 那条不是小事。** Windows 上 `python -m ... > file` 会产出 CRLF，而仓库 `.gitattributes` 强制 LF，结果是 `check.sh` 的契约漂移 `diff` 在 Windows 开发机上永远失败、在 CI 上却通过。导出必须写 `sys.stdout.buffer`。
-- **不要顺手建 `db/` 或写第一个迁移。** 看起来只是"先把引擎配好"，但连接串格式、方言参数、`CLIENT_FOUND_ROWS` 的取值全都依赖 T01 的实测结论（尤其是 D4）。先建等于先猜。
+- **不要顺手建 `db/` 或写第一个迁移。** 看起来只是"先把引擎配好"，但连接串格式、方言参数、条件更新的影响行数语义全都依赖 T01 的实测结论。先建等于先猜。
 - **不要为了让 OpenAPI"看起来完整"去补业务端点。** T03 之后每个工作包自己定义自己的 schema，提前定义的那份一定会被推翻，而它已经进了公共契约。
 - **`contracts/` 不许 import 业务模块**，这条有测试守着。加共享模型时注意方向：contracts 被依赖，不依赖别人。
+- **前端两处反直觉的写法有测试依据，别"简化"掉**（决策 A12）：`client.ts` 的
+  `baseUrl` 必须是绝对 URL，改回 `"/"` 会让所有前端测试挂在 `ERR_INVALID_URL`；
+  `shared/test/setup.ts` 的 `server.listen()` 必须在模块顶层，挪进 `beforeAll`
+  会让 MSW 补丁晚于 openapi-fetch 抓取 `globalThis.fetch`，请求直接穿透到真实网络。
+- **`errors.ts` 的 `FALLBACK_MESSAGE_BY_CODE` 是故意写成 `Record<ApiErrorCode, string>` 的。**
+  后端新增错误码、重新生成类型之后，这里漏一个就编译失败。不要为了省事改成
+  `Partial<Record<...>>` 或加默认分支——那会让契约变更悄悄溜过前端。
