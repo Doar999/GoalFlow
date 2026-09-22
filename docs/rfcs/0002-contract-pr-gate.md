@@ -6,8 +6,9 @@
 | 提出日期 | 2026-09-22 |
 | 提出人 | Doar |
 | 影响范围 | 工程流程（CI 门禁）、公共契约的判定边界 |
-| 状态 | 草案 |
-| 关联 PR | #（待填） |
+| 状态 | 已接受 |
+| 关联 PR | [#3](https://github.com/Doar999/GoalFlow/pull/3) |
+| 接受方式 | 本 PR 同时包含提案与回写，**合并 #3 即为接受**；不接受则整个 PR 不合并 |
 
 ## 摘要
 
@@ -49,7 +50,7 @@
 | --- | --- | --- |
 | 契约面 | `openapi/`、`backend/migrations/`、`backend/src/goalflow/contracts/`、`backend/src/goalflow/api/` | 对外可见的接口形状、错误码、枚举与数据库结构 |
 | 业务模块 | `backend/src/goalflow/{auth,goals,planning,scheduling,agent,jobs}/`、`frontend/src/features/` | 业务规则与功能实现 |
-| 中性 | `backend/src/goalflow/{core,db}/`、`frontend/src/{app,shared}/`、`backend/tests/`、`scripts/`、`docs/` | 两面都不算 |
+| 中性 | `backend/src/goalflow/{__init__.py,core,db,tools}/`、`frontend/src/{app,shared}/`、`backend/tests/`、`scripts/`、`docs/` | 两面都不算 |
 
 `backend/src/goalflow/api/` 进入契约面，是因为它就是 `openapi/goalflow.yaml` 的源。把生成物和它的源放在同一面，死锁随之消失：一个"契约 PR"自然地包含路由声明、Pydantic 模型、导出的 OpenAPI 以及重新生成的前端类型。
 
@@ -62,6 +63,8 @@
 确有需要同时改两面时（典型场景：新建工程骨架、一次性重构模块边界），PR 打 `contract-change` 标签即放行。作业在 GitHub Step Summary 中列出本次的契约面改动文件清单，使其在评审页面上一眼可见。
 
 放行是**显式且留痕**的，比让人去改门禁本身要好。它不削弱 00-workflow 第 6 节的评审要求——标签只影响 CI 是否拦截，不影响谁有权批准。
+
+标签要真的起作用，`on.pull_request` 必须补 `types: [opened, synchronize, reopened, labeled, unlabeled]`——默认三种触发类型里没有 `labeled`，打完标签不会重跑 CI，放行出口会形同虚设。代价是打标签或撤标签各多跑一轮 CI，`concurrency` 已配 `cancel-in-progress`，连续操作不会堆积。
 
 ### diff 形式修正
 
@@ -79,18 +82,29 @@ impl=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
+    # 生成物随契约一起变更，不单独判定
     frontend/src/shared/api/generated/*)
-      # 生成物随契约一起变更，不单独判定
       ;;
     openapi/*|backend/migrations/*|backend/src/goalflow/contracts/*|backend/src/goalflow/api/*)
       contract=1 ;;
+    # 中性
+    backend/src/goalflow/__init__.py|backend/src/goalflow/core/*|backend/src/goalflow/db/*|backend/src/goalflow/tools/*|frontend/src/app/*|frontend/src/shared/*)
+      ;;
+    # 业务模块
     backend/src/goalflow/auth/*|backend/src/goalflow/goals/*|backend/src/goalflow/planning/*|backend/src/goalflow/scheduling/*|backend/src/goalflow/agent/*|backend/src/goalflow/jobs/*|frontend/src/features/*)
+      impl=1 ;;
+    # 兜底：名单外的一律按业务模块处理
+    backend/src/goalflow/*|frontend/src/*)
       impl=1 ;;
   esac
 done <<< "$CHANGED"
 ```
 
-`frontend/src/shared/api/generated/*` 的豁免分支必须排在前面，否则会被 `frontend/src/features/*` 之外的规则误判——当前实现已经是这个顺序，保持不变。
+`frontend/src/shared/api/generated/*` 的豁免分支必须排在前面，否则会被后面的 `frontend/src/shared/*` 与兜底规则抢先匹配——当前实现已经是这个顺序，保持不变。
+
+最后的兜底分支让判定**fail-closed**：三份名单之外的新包按业务模块处理，因此"新建一个模块并同时改契约面"会被拦下，而不是因为没人想起来更新名单就静默放行。代价是新增契约面或中性的包时必须同步改这里；这个代价是刻意选的——门禁在无人察觉的情况下失效，比多改一行要贵得多。`backend/tests/`、`scripts/`、`docs/` 和仓库根的工程文件不匹配任何分支，天然为中性。
+
+`backend/src/goalflow/tools/`（OpenAPI 导出等开发期工具）归中性：它既不是对外契约，也不是业务规则。
 
 本提案不改变：
 
@@ -118,17 +132,21 @@ done <<< "$CHANGED"
 - 无需任何人 rebase，无需重新生成前端类型。
 - 尚无已合并的业务 PR 受此判定影响——`backend/` 与 `frontend/` 均未创建。
 - 对工作包的影响：T02 据此可以在一个 PR 内交付工程骨架与契约基线；T03 之后的工作包在改接口时不再需要拆分 PR，除非同时改到业务模块。
+- T02 骨架已用其**真实文件清单**（32 个文件）对新判定跑过：契约面命中、业务模块为 0，无需标签即可通过。验证方法见本 PR 描述。
+- `on.pull_request` 补 `types` 后，打标签与撤标签会各触发一轮完整 CI。
 
 ## 未决问题
 
-- 合并前需确认：`contract-change` 标签由谁创建与维护，以及是否需要在 `.github/` 下补一份标签定义。本提案倾向于在仓库设置中手工创建一次即可，不引入标签同步工具。
+- 合并前需确认：`contract-change` 标签由谁创建与维护，以及是否需要在 `.github/` 下补一份标签定义。本提案倾向于在仓库设置中手工创建一次即可，不引入标签同步工具。谁有权打这个标签等同于谁有 write 权限——它是**留痕**机制，不是审批闸门，审批仍由 00-workflow 第 6 节与 CODEOWNERS 负责。
 - 刻意排除在本 RFC 范围外：`check.sh`、`install.sh`、`test.sh` 的内容，以及 CI 是否需要接入真实 seekdb 服务——后者属于 T01 的结论范围。
 - 后续需要自己的 RFC：如果将来 api 层被证明承担了过多业务编排，`api/` 归属契约面的前提就不再成立，届时需重新评估。
 
-## 接受后的回写清单
+## 回写清单
 
-- [ ] 更新 `.github/workflows/ci.yml` 的 `pr-hygiene` 作业
-- [ ] 更新 [01-contracts-and-ownership.md](../engineering/01-contracts-and-ownership.md) 第 3 节，写明契约面与业务模块的划分以及 `contract-change` 标签的用法
-- [ ] 在仓库中创建 `contract-change` 标签
-- [ ] 更新 [docs/rfcs/README.md](README.md) 索引
-- [ ] 不涉及 `CONTEXT.md` 术语变更
+本 PR 同时包含提案与回写，因此下列各项在同一个 PR 内完成：
+
+- [x] 更新 `.github/workflows/ci.yml` 的 `pr-hygiene` 作业
+- [x] 更新 [01-contracts-and-ownership.md](../engineering/01-contracts-and-ownership.md) 第 3 节，写明契约面与业务模块的划分以及 `contract-change` 标签的用法
+- [x] 更新 [docs/rfcs/README.md](README.md) 索引
+- [ ] **在仓库中创建 `contract-change` 标签**——需在 GitHub 仓库设置中手工创建，不在代码改动范围内。标签不存在时门禁行为不变（无人能打上标签，等同于不放行），因此不阻塞合并，但在首次需要放行前必须建好。
+- [x] 不涉及 `CONTEXT.md` 术语变更
