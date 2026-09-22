@@ -1,0 +1,76 @@
+[project]
+name = "goalflow"
+version = "0.1.0"
+description = "GoalFlow 后端：API、Celery Worker 与 Beat 共用的模块化单体"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+# 版本约束只写下界与主版本上界，精确版本由 uv.lock 固定。
+# LangChain 与 LangGraph 按 T02 交接卡决策 A2 在本工作包锁定主版本；
+# 数据访问、队列与驱动同样只锁版本，代码分别属于 T01/T03 与 T07。
+dependencies = [
+    "fastapi>=0.141.1,<1",
+    "uvicorn[standard]>=0.53.0,<1",
+    "pydantic>=2.13.5,<3",
+    "pydantic-settings>=2.15.0,<3",
+    "sqlalchemy>=2.0.54,<3",
+    "alembic>=1.20.0,<2",
+    "pymysql>=1.2.3,<2",
+    "celery>=5.6.3,<6",
+    "redis>=8.1.0,<9",
+    "langchain>=1.4.2,<2",
+    "langchain-openai>=1.6.3,<2",
+    "langchain-anthropic>=1.7.2,<2",
+    "langgraph>=1.2.12,<2",
+    "pyyaml>=6.0.3,<7",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8,<1",
+    "mypy>=2.3.1,<3",
+    "pytest>=9.1.1,<10",
+    "httpx>=0.28.1,<1",
+    "types-pyyaml>=6.0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/goalflow"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "TID", "ANN", "RUF"]
+ignore = [
+    # details 这类字段确实需要 Any。
+    "ANN401",
+    # RUF001-003 把中文全角标点判为"可能打错的西文标点"。AGENTS.md 要求中文
+    # 直接用中文字符，本项目的注释与文案本就是中文，这三条在此只会产生噪声。
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里省略返回值标注是惯例，不构成可读性问题。
+"**/tests/**" = ["ANN"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --strict-config"
+testpaths = ["tests"]
