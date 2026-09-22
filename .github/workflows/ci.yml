@@ -18,25 +18,26 @@ jobs:
     name: 静态检查与契约漂移
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安装 uv
-        uses: astral-sh/setup-uv@v5
+        # setup-uv 自 v8 起不再发布浮动大版本标签（v7 是最后一个），只能钉具体版本。
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
       - name: 安装 Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9
 
       - name: 安装 Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -53,25 +54,26 @@ jobs:
     # 并让数据库相关测试跑在真实 seekdb 上——SQLite 通过不算通过。
     # 见 docs/engineering/03-code-and-test-standards.md。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安装 uv
-        uses: astral-sh/setup-uv@v5
+        # setup-uv 自 v8 起不再发布浮动大版本标签（v7 是最后一个），只能钉具体版本。
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
       - name: 安装 Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9
 
       - name: 安装 Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -86,7 +88,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
