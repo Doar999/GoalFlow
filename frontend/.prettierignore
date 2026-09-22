@@ -1,0 +1,3 @@
+# 生成物，由 scripts/api-generate.sh 产生，禁止手工编辑或格式化。
+src/shared/api/generated/
+dist/

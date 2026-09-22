@@ -42,7 +42,7 @@ jobs:
       - name: 安装 Node
         uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: 安装依赖
         run: bash scripts/install.sh
@@ -78,7 +78,7 @@ jobs:
       - name: 安装 Node
         uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: 安装依赖
         run: bash scripts/install.sh
