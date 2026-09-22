@@ -1,0 +1,48 @@
+# 提交前钩子。安装：bash scripts/install.sh
+#
+# 这里只放**快**的检查（秒级）。慢的、需要完整环境的检查放在 scripts/check.sh 和 CI 里。
+# 钩子的作用是让明显问题在提交那一刻就被拦下，而不是等到 CI。
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^frontend/src/shared/api/generated/
+      - id: end-of-file-fixer
+        exclude: ^frontend/src/shared/api/generated/
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      # 生成物必须由 scripts/api-generate.sh 产生。手工编辑会在下次生成时被覆盖，
+      # 并且会让 openapi/goalflow.yaml 与实际接口脱节。
+      - id: no-manual-edit-generated
+        name: 禁止手工编辑生成物
+        entry: >-
+          bash -c 'echo "错误：这些文件是生成物，请改后端定义后执行 bash scripts/api-generate.sh：";
+          printf "  %s\n" "$@";
+          echo "见 docs/engineering/01-contracts-and-ownership.md 第 2 节。"; exit 1' --
+        language: system
+        files: ^frontend/src/shared/api/generated/
+
+# 关于迁移：
+# "已合并的迁移不可修改" 这条规则需要对比 base 分支才能区分"修改已有迁移"和"新增迁移"，
+# 本地钩子做不到，因此由 CI 的 pr-hygiene 作业负责。见 .github/workflows/ci.yml。

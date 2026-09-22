@@ -1,0 +1,40 @@
+# ---- 凭证与本地配置 ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+dist/
+build/
+*.egg-info/
+
+# ---- Node ----
+node_modules/
+.pnpm-store/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# ---- 编辑器与系统 ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# ---- 本地数据与产物 ----
+*.log
+/data/
+/tmp/

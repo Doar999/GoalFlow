@@ -1,0 +1,90 @@
+name: 缺陷报告
+description: 报告一个行为与预期不符的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        涉及凭证泄漏、越权或数据隔离失效的问题**不要公开提 Issue**，请直接联系维护者。
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 一两句话说明发生了什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写，尽量能被别人照着复现
+      placeholder: |
+        1. 创建一个学习目标并确认档案
+        2. 在可用时间为零的日期启用计划
+        3. 打开今日页
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 按 PRD 或设计文档，这里应该发生什么？可以的话附上出处
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么。有错误码、request_id、job_id 请一并贴出
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及模块
+      multiple: true
+      options:
+        - 账号与会话
+        - 目标与档案
+        - 路线与计划
+        - 排期与时间预算
+        - 今日页与执行记录
+        - 反馈调整与回顾
+        - Agent 与模型接入
+        - 作业与恢复
+        - 前端通用
+        - 部署与运维
+    validations:
+      required: true
+
+  - type: input
+    id: workpackage
+    attributes:
+      label: 相关工作包
+      description: 已知属于哪个工作包时填写，例如 T05
+      placeholder: T__
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: 分支或提交、数据库版本、浏览器、部署方式
+      placeholder: |
+        分支/提交：
+        seekdb 版本：
+        浏览器：
+        部署方式：本地 / Docker Compose
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 补充信息
+      description: 日志、截图、已排查过的方向。**请勿粘贴任何 API Key 或口令。**

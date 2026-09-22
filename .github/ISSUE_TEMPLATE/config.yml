@@ -1,0 +1,14 @@
+# OWNER/REPO 为占位符，确定仓库地址后替换。
+blank_issues_enabled: false
+contact_links:
+  - name: 改变一个已确认的决策
+    url: https://github.com/OWNER/REPO/blob/main/docs/rfcs/README.md
+    about: 要偏离已确认决策，或把影响公共契约的"建议 / 待定"收敛成"已确认"，请提 RFC 而不是 Issue。
+
+  - name: 开发流程与规范
+    url: https://github.com/OWNER/REPO/blob/main/CONTRIBUTING.md
+    about: 环境准备、分支与提交规范、评审规则、完成定义。
+
+  - name: 安全问题
+    url: https://github.com/OWNER/REPO/blob/main/CONTRIBUTING.md
+    about: 凭证泄漏、越权、数据隔离失效请勿公开提 Issue，直接联系维护者。

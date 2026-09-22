@@ -1,0 +1,54 @@
+# 路径所有权
+#
+# 说明见 docs/engineering/01-contracts-and-ownership.md 第 7 节。
+#
+# 下面的 @xxx-owner 是占位符，确定 GitHub 账号后替换成真实用户名。
+# 2–3 人规模下一个人可以同时出现在多行；但同一条路径同一时刻只应有一个负责人。
+#
+# 语法：后匹配的规则覆盖先匹配的，所以通用规则写在前面、专用规则写在后面。
+
+# 默认：任何未被下面规则覆盖的文件
+*                                       @integration-owner
+
+# ---- 事实源：术语与产品需求 ----
+/CONTEXT.md                             @product-owner @integration-owner
+/docs/product/                          @product-owner
+
+# ---- 设计文档 ----
+/docs/development/                      @integration-owner
+/docs/rfcs/                             @integration-owner @product-owner
+
+# ---- 工程规范与基础设施 ----
+/AGENTS.md                              @integration-owner
+/CLAUDE.md                              @integration-owner
+/CONTRIBUTING.md                        @integration-owner
+/docs/engineering/                      @integration-owner
+/scripts/                               @integration-owner
+/Makefile                               @integration-owner
+/.github/                               @integration-owner
+/.pre-commit-config.yaml                @integration-owner
+/docker/                                @integration-owner
+
+# ---- 公共契约：改动必须走契约变更流程，且不得与业务实现同 PR ----
+/openapi/                               @integration-owner @data-owner
+/backend/src/goalflow/contracts/        @integration-owner @data-owner
+/backend/migrations/                    @data-owner
+
+# ---- 后端模块 ----
+/backend/src/goalflow/core/             @integration-owner
+/backend/src/goalflow/db/               @data-owner
+/backend/src/goalflow/auth/             @backend-owner
+/backend/src/goalflow/goals/            @backend-owner
+/backend/src/goalflow/planning/         @rules-owner
+/backend/src/goalflow/scheduling/       @rules-owner
+/backend/src/goalflow/agent/            @agent-owner
+/backend/src/goalflow/jobs/             @backend-owner
+/backend/src/goalflow/api/              @backend-owner
+
+# ---- 前端 ----
+/frontend/src/shared/                   @frontend-owner
+/frontend/src/app/                      @frontend-owner
+/frontend/src/features/                 @frontend-owner
+
+# ---- 交接卡：由各工作包负责人维护，不设统一 owner ----
+# 有意不在此列出 /docs/worklog/，避免每张卡的更新都触发同一个人的评审请求。

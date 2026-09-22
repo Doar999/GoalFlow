@@ -1,0 +1,73 @@
+name: 开发任务
+description: 领取或拆分一个工作包任务
+title: "[T__] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        工作包定义见 `docs/development/06-delivery-plan.md`。
+        开工前请按 `docs/engineering/02-ai-collaboration.md` 建立交接卡。
+
+  - type: input
+    id: workpackage
+    attributes:
+      label: 工作包
+      description: T01–T15 之一；若是工作包的一个子任务，写明父工作包
+      placeholder: T05
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 本任务要交付什么能力，怎样算达成
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 可修改路径
+      description: 明确列出本任务允许改动的路径。这一项会直接作为 AI 会话的边界约束使用
+      placeholder: |
+        backend/src/goalflow/scheduling/
+        backend/tests/scheduling/
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖
+      description: 依赖哪些工作包、哪些契约、哪些已合并的 PR？M0 未完成时不要领取依赖它的任务
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收场景
+      description: 逐条列出可执行的验收场景，每条都要能对应到一个测试或可复现的手工验证
+      placeholder: |
+        - 双目标争用同一天额度时不双重成功
+        - 过期 expected_revision 返回 REVISION_CONFLICT
+        - 第二个用户访问被拒
+    validations:
+      required: true
+
+  - type: textarea
+    id: undecided
+    attributes:
+      label: 需要先收敛的未决项
+      description: |
+        列出设计文档中状态为"建议 / 待定"、但本任务必须用到的结论。
+        影响公共契约或跨模块行为的，需要先走 RFC；只影响本模块的，记入交接卡的"决策与假设"。
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: 是否涉及公共契约
+      options:
+        - label: 需要改 OpenAPI / 共享枚举 / 错误码 / 数据库迁移（**必须先单独提契约 PR 并合并**）
