@@ -30,7 +30,9 @@ if [ -d backend ]; then
     run uv lock --project backend --check
     run uv run --project backend ruff format --check backend
     run uv run --project backend ruff check backend
-    run uv run --project backend mypy backend/src
+    # mypy 只在当前工作目录找配置，而这里的 cwd 是仓库根。不显式指向
+    # backend/pyproject.toml 的话，[tool.mypy] 的 strict 会被静默忽略。
+    run uv run --project backend mypy --config-file backend/pyproject.toml backend/src
   fi
 else
   skip "backend/ 尚未创建"
