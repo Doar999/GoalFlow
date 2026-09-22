@@ -27,6 +27,7 @@ backend/
 frontend/
 openapi/
 .env.example
+scripts/check.sh                只改 mypy 调用参数，见决策 A9
 docs/worklog/T02-engineering-foundation.md
 ```
 
@@ -38,7 +39,9 @@ docs/product/
 docs/development/
 docs/engineering/
 .github/workflows/            见决策 A6，由 RFC 0002 单独处理
-scripts/                      见未决问题
+scripts/install.sh
+scripts/test.sh
+scripts/api-generate.sh
 ```
 
 ### 不在本次范围内
@@ -78,6 +81,9 @@ scripts/                      见未决问题
 | A5 | 不建 `backend/src/goalflow/db/` 与 `backend/migrations/` | T01 未出结论；01-contracts 第 6 节 | 后端数据层 | 否 |
 | A6 | 本工作包的实现 PR 需待 [RFC 0002](../rfcs/0002-contract-pr-gate.md) 合并后才能通过 CI；在此之前分支可推送但不合并 | 现有 `pr-hygiene` 与契约漂移检查互相矛盾 | 工程流程 | 已走 RFC 0002 |
 | A7 | `openapi/goalflow.yaml` 由 `python -m goalflow.tools.export_openapi` 以 UTF-8 + LF 写入 stdout 的字节流产出，不经文本层换行转换 | Windows 上 Python 文本 stdout 会把 `\n` 转成 `\r\n`，导致 `check.sh` 的 `diff` 永远失败 | 工程流程 | 否 |
+| A8 | `ErrorCode` 在 05-module-contracts 的六个错误码之外补 `VALIDATION_FAILED`、`UNAUTHENTICATED`、`FORBIDDEN`、`NOT_FOUND`、`INTERNAL_ERROR`、`IDEMPOTENCY_KEY_CONFLICT` 六项 | 前五项是任何 HTTP 接口都会产生的情形，第六项直接对应 01-contracts 第 5 节"相同 key 不同内容返回冲突" | 公共契约 | 否 |
+| A9 | `scripts/check.sh` 的 mypy 调用补 `--config-file backend/pyproject.toml` | mypy 只在 cwd 找配置，而脚本的 cwd 是仓库根，`strict = true` 原本被静默忽略、类型检查空转。已用临时违例实测确认 | 工程流程 | 否 |
+| A10 | ruff 关闭 `RUF001`/`RUF002`/`RUF003` | 这三条把中文全角标点判为"疑似打错的西文标点"，而 AGENTS.md 第 139 行要求中文直接用中文字符 | 后端代码风格 | 否 |
 
 A3 与 A4 都触及公共契约。按 [00-workflow.md](../engineering/00-workflow.md) 第 3 节，它们影响公共契约本应走 RFC；本次判断为不需要，理由是：A3 新增的是一个无业务语义的健康检查端点，A4 是**把已确认的第 5 节全局约束翻译成代码形状**而非做出新选择。如果评审认为 A4 的具体字段命名构成新决策，应退回走 RFC。
 
