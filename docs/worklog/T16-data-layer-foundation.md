@@ -78,6 +78,7 @@ frontend/
 | B6 | Alembic 脚手架与 `db/` **合在同一个 PR**，但保持为独立提交 | 偏离 AGENTS.md 红线 1（契约不与实现混 PR），由仓库负责人确认。理由：脚手架不含任何业务迁移（`versions/` 为空），`env.py` 又直接依赖本 PR 新建的 `create_database_engine()`，拆开反而要先合一个无法独立验证的半成品。**仅限本次**，T03 起的业务迁移仍按红线 1 单独提 PR | 工程流程 | 否 |
 | B7 | `alembic.ini` 的注释一律写英文。中文说明放 `backend/migrations/README` | Alembic 用 configparser 按**平台默认编码**读 ini，中文 Windows 上不是 UTF-8，非 ASCII 会让每条 alembic 命令都 `UnicodeDecodeError`。这是实测踩到的，不是预防性规定 | 迁移工具链 | 否 |
 | B8 | 迁移用顺序编号（`0001`、`0002`……），不用随机 rev id | 多分支同时新增迁移时，冲突直接表现为文件名撞车；随机 id 会各自挂在同一个 `down_revision` 上形成双 head，要到合并后才发现 | 工程流程 | 否 |
+| B9 | **不启用 STRICT 表**，最低 SQLite 版本断言维持 3.35 | 仓库负责人决定。已实测（SQLAlchemy 2.0.54 / SQLite 3.50.4）：启用须把全部列类型映射为 `TEXT`/`INTEGER`（默认的 `VARCHAR(n)`、`BOOLEAN`、`DATETIME`、`JSON`、`NUMERIC` 在 STRICT 表里建表即失败），且 batch 重建是否保留 STRICT 未验证。放弃的代价：库不拦类型错误，例如分钟数字段写入 `100/3` 会静默存成 REAL（T01 B6）。类型正确性由 Pydantic 入口校验 + SQLAlchemy 类型层负责，个别关键字段需要库级兜底时用 `CHECK (typeof(col) = 'integer')` 逐列加 | 全部业务表 | 否；日后想启用需逐表重建 |
 
 ### B1 为什么要改 T01 的做法
 
@@ -91,7 +92,6 @@ T01 的 `conftest.py` 在 `begin` 事件里**无条件**发 `BEGIN IMMEDIATE`。
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| 是否启用 STRICT 表（从 T01 第 9 节继承，仍未决） | 能把一部分类型校验还给数据库，最直接的收益是分钟数类字段挡住非整数（非 STRICT 下 `100/3` 会静默存成 REAL）。已实测（SQLAlchemy 2.0.54 / SQLite 3.50.4）：`sqlite_strict=True` 能生成 `STRICT`，反射也能读回；但 SQLAlchemy 默认类型名 `VARCHAR(n)`、`BOOLEAN`、`DATETIME`、`JSON`、`NUMERIC` 在 STRICT 表里**建表即失败**，启用就必须约定所有列只用映射到 `TEXT`/`INTEGER` 的类型。另需把最低版本断言从 3.35 提到 3.37；batch 重建是否保留 STRICT **未端到端验证** | 数据负责人，T03 建第一张表前 |
 | FastAPI 的请求级会话依赖怎么给 | 现在只有上下文管理器。路由里是每请求一个会话，还是按读写分两个依赖，取决于 T03 的路由形态 | 后端负责人，在 T03 里定 |
 | Celery Worker 的连接池参数 | Worker 进程数 × 池大小决定并发写的排队深度，直接关系到 T01 D9 那条红线在真实负载下是否还成立 | 后台负责人，在 T07 里定 |
 | `busy_timeout` 是否要按环境可调 | 现在是常量 5000ms。要可调就得加环境变量，那是契约变更 | 数据负责人与集成负责人 |

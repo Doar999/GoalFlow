@@ -234,7 +234,7 @@ test_g3_extension_loads_on_this_platform
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| 是否启用 STRICT 表 | B6 证明类型校验缺位，STRICT 能把一部分校验还给数据库。但它要求 SQLite ≥ 3.37（现有断言是 3.35），且**未验证 SQLAlchemy 能否声明 STRICT、Alembic batch 重建时会不会把它丢掉**。要定就得先补这个验证，不能靠推断 | 数据负责人 |
+| ~~是否启用 STRICT 表~~ | **已决定：不启用**，补做的验证与理由见 [T16 交接卡](T16-data-layer-foundation.md)决策 B9 | 已关闭 |
 | 单条连接的写吞吐上限是否够用 | D9 证明多进程写是安全的，但只测了 4 进程 × 25 次。真实负载下 API + Worker + Beat + outbox 分发器的并发写规模还没有数 | 数据负责人与后台负责人，在 T07 前定 |
 | 库文件的部署路径与备份周期 | A6 只定了"不能放网络文件系统"，没定放哪、多久备一次、备份留几份 | 集成与交付负责人 |
 | [T02 交接卡](T02-engineering-foundation.md)第 9 节列的"等 RFC 0003 接受后回写 `backend/README.md`、`core/config.py`、`.env.example`"一条，**已由本工作包完成** | 该条已失效，留着会让下一个人重做一遍 | T02 负责人删除即可，本工作包按"不改别人工作包的交接卡"未代改 |
