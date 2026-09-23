@@ -30,7 +30,7 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 | T01 | [T01-sqlite-verification.md](T01-sqlite-verification.md) | 待填 | 已完成（39 条用例通过，结论已回写） |
 | T02 | [T02-engineering-foundation.md](T02-engineering-foundation.md) | 待填 | 已完成 |
 | T03 | [T03-auth-session.md](T03-auth-session.md) | 待填 | 已完成（PR #10 已合并） |
-| T04 | [T04-goal-plan-versions.md](T04-goal-plan-versions.md) | 待填 | 未开始（交接卡已建，等第 8 节确认清单收敛） |
+| T04 | [T04-goal-plan-versions.md](T04-goal-plan-versions.md) | 待填 | 设计基线已确认（2026-09-23），代码未开始，下一步契约 PR |
 | T07 | [T07-job-execution.md](T07-job-execution.md) | 待填 | 已完成（#11、#12、#13 已合并；202 验收挪到 T08） |
 >>>>>>> 43c96a6 (docs(T04): 建立目标与计划版本工作包交接卡)
 | T16 | [T16-data-layer-foundation.md](T16-data-layer-foundation.md) | 待填 | 已完成（连接装配与 Alembic 脚手架已合并） |

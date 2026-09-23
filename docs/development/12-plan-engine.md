@@ -93,6 +93,8 @@ activate_plan(command: ActivatePlanCommand) -> ActivationResult
 
 任何一步失败整体回滚。重复请求返回已有 activation 结果，不能重复创建任务、依赖或安排项。
 
+激活是用户面的唯一激活操作：同一事务内调用内部命令 `activate_goal` 将目标从 `draft` 切换为 `active`（见 [目标生命周期与结束实现基线](17-goal-lifecycle-design.md) 第 1 节），不提供独立的目标激活 HTTP 端点，也不存在"计划已启用而目标仍为 draft"的中间态。
+
 ## 8. API 衔接
 
 - `POST /api/goals/{id}/plan-generations`：提交 route_id、start_date 和 revisions，返回生成作业。
