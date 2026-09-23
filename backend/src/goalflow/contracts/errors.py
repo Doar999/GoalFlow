@@ -40,6 +40,11 @@ class ErrorCode(StrEnum):
     INPUT_STALE = "INPUT_STALE"
     MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 
+    # —— 目标生命周期（T04 交接卡决策 A10/A2；17 号文档第 2 节）——
+    # 状态机不允许的转换：paused → completed、maintenance 请求 completed、撤销窗口外撤销等。
+    # 与 VALIDATION_FAILED 分开：请求本身格式正确，被拒的是当前状态下的这次操作。
+    GOAL_STATE_CONFLICT = "GOAL_STATE_CONFLICT"
+
 
 HTTP_STATUS_BY_ERROR_CODE: dict[ErrorCode, int] = {
     ErrorCode.VALIDATION_FAILED: 422,
@@ -58,6 +63,7 @@ HTTP_STATUS_BY_ERROR_CODE: dict[ErrorCode, int] = {
     ErrorCode.CONFIRMATION_REQUIRED: 409,
     ErrorCode.INPUT_STALE: 409,
     ErrorCode.MODEL_UNAVAILABLE: 503,
+    ErrorCode.GOAL_STATE_CONFLICT: 409,
 }
 
 # 可重试指的是"原样重试有意义"。版本冲突与预算冲突需要用户先看到新状态再决定，

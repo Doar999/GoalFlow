@@ -22,6 +22,70 @@ components:
       - timezone
       title: AccountUser
       type: object
+    ActivatePlanRequest:
+      properties:
+        draft_plan_id:
+          maxLength: 36
+          title: Draft Plan Id
+          type: string
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        planning_revision:
+          description: 客户端读到的 planning revision；过期返回 INPUT_STALE
+          minimum: 0.0
+          title: Planning Revision
+          type: integer
+      required:
+      - expected_revision
+      - draft_plan_id
+      - planning_revision
+      title: ActivatePlanRequest
+      type: object
+    ActivationResponse:
+      description: 启用结果。幂等：重复请求返回同一结果，不重复创建任务（12 号第 7 节）。
+      properties:
+        activated_at:
+          format: date-time
+          title: Activated At
+          type: string
+        first_batch_window:
+          additionalProperties: true
+          description: 首个批次的 window_start / window_end
+          title: First Batch Window
+          type: object
+        goal_id:
+          title: Goal Id
+          type: string
+        plan_version_id:
+          description: 切换为 active 的计划版本；目标状态同步 draft → active（T04 决策 A10）
+          title: Plan Version Id
+          type: string
+      required:
+      - goal_id
+      - plan_version_id
+      - first_batch_window
+      - activated_at
+      title: ActivationResponse
+      type: object
+    AffectedDependency:
+      description: 暂停目标时受影响的跨目标依赖项。取值由 T06 的依赖图计算，接入前恒为空列表（T04 决策 A12）。
+      properties:
+        goal_id:
+          description: 依赖方（后继任务）所属目标
+          title: Goal Id
+          type: string
+        task_id:
+          description: 将被计算态 blocked 的后继任务
+          title: Task Id
+          type: string
+      required:
+      - goal_id
+      - task_id
+      title: AffectedDependency
+      type: object
     AuthSessionResponse:
       description: 当前用户与会话元数据。不包含会话令牌。
       properties:
@@ -65,6 +129,234 @@ components:
       - new_password
       title: ChangePasswordRequest
       type: object
+    CloseGoalRequest:
+      properties:
+        closure_kind:
+          $ref: '#/components/schemas/ClosureKind'
+        criteria_confirmations:
+          description: 成功标准逐条确认；随结束操作写入快照，撤销后可还原（17 号第 4 节）
+          items:
+            $ref: '#/components/schemas/CriterionConfirmation'
+          title: Criteria Confirmations
+          type: array
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        note:
+          anyOf:
+          - maxLength: 2000
+            type: string
+          - type: 'null'
+          title: Note
+      required:
+      - expected_revision
+      - closure_kind
+      - criteria_confirmations
+      title: CloseGoalRequest
+      type: object
+    ClosureKind:
+      description: 结束方式。completed 仅对 kind=achievement 开放（17 号第 2 节）。
+      enum:
+      - completed
+      - stopped
+      title: ClosureKind
+      type: string
+    ConfirmProfileRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: ConfirmProfileRequest
+      type: object
+    CreateGoalRequest:
+      properties:
+        initial_description:
+          anyOf:
+          - maxLength: 8000
+            type: string
+          - type: 'null'
+          description: 自然语言目标描述，作为澄清对话的起点（R02）
+          title: Initial Description
+        title:
+          maxLength: 200
+          minLength: 1
+          title: Title
+          type: string
+      required:
+      - title
+      title: CreateGoalRequest
+      type: object
+    CriterionConfirmation:
+      description: 结束目标时对单条成功标准的确认。快照整体写入 goals.closure_criteria_snapshot_json（T04 决策 A8）。
+      properties:
+        criterion_key:
+          description: 成功标准的标识，来自已确认档案的 success_criteria
+          title: Criterion Key
+          type: string
+        met:
+          description: 该标准是否已达成；允许部分达成时标记完成并记录未达成项（D12 第 3 节）
+          title: Met
+          type: boolean
+        note:
+          anyOf:
+          - maxLength: 2000
+            type: string
+          - type: 'null'
+          description: 对未达成项的记录说明
+          title: Note
+      required:
+      - criterion_key
+      - met
+      title: CriterionConfirmation
+      type: object
+    DependencyCheckStatus:
+      description: '暂停响应中跨目标依赖影响的检查标记（T04 决策 A12）。
+
+
+        not_wired 表示依赖校验尚未接入（T06 建 task_dependencies 前），此时影响列表为空
+
+        仅因"未检查"，不代表"无影响"。'
+      enum:
+      - wired
+      - not_wired
+      title: DependencyCheckStatus
+      type: string
+    DeriveGoalRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: DeriveGoalRequest
+      type: object
+    DerivedMetric:
+      description: 服务端计算的路线派生指标，模型不能覆盖（11 号第 4 节）。
+      properties:
+        available_weekly_minutes:
+          title: Available Weekly Minutes
+          type: integer
+        budget_gap_minutes:
+          title: Budget Gap Minutes
+          type: integer
+        conflicts:
+          description: 预算、期限或与其他目标的冲突
+          items:
+            additionalProperties: true
+            type: object
+          title: Conflicts
+          type: array
+        peak_weekly_minutes:
+          title: Peak Weekly Minutes
+          type: integer
+        recommendation_eligible:
+          title: Recommendation Eligible
+          type: boolean
+        total_estimated_minutes:
+          title: Total Estimated Minutes
+          type: integer
+      required:
+      - total_estimated_minutes
+      - peak_weekly_minutes
+      - available_weekly_minutes
+      - budget_gap_minutes
+      - recommendation_eligible
+      title: DerivedMetric
+      type: object
+    DraftTaskResponse:
+      description: 计划草稿中的任务。draft 计划的任务为 proposed，不出现在正式待办（R05）。
+      properties:
+        batch_window:
+          additionalProperties: true
+          description: 所属批次的 window_start / window_end
+          title: Batch Window
+          type: object
+        can_split:
+          title: Can Split
+          type: boolean
+        earliest_date:
+          anyOf:
+          - format: date
+            type: string
+          - type: 'null'
+          title: Earliest Date
+        execution_status:
+          $ref: '#/components/schemas/TaskExecutionStatus'
+        executor:
+          $ref: '#/components/schemas/TaskExecutor'
+        expected_minutes:
+          minimum: 0.0
+          title: Expected Minutes
+          type: integer
+        latest_date:
+          description: 非空；由计划生成时推导（05-module-contracts 默认值表）
+          format: date
+          title: Latest Date
+          type: string
+        maximum_minutes:
+          minimum: 0.0
+          title: Maximum Minutes
+          type: integer
+        milestone_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Milestone Id
+        minimum_minutes:
+          minimum: 0.0
+          title: Minimum Minutes
+          type: integer
+        minimum_session_minutes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Minimum Session Minutes
+        phase_id:
+          title: Phase Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        spec_no:
+          description: 内容版本号；草稿编辑产生新 spec，原 spec 保留
+          minimum: 1.0
+          title: Spec No
+          type: integer
+        task_id:
+          title: Task Id
+          type: string
+        title:
+          title: Title
+          type: string
+      required:
+      - revision
+      - task_id
+      - spec_no
+      - title
+      - executor
+      - expected_minutes
+      - minimum_minutes
+      - maximum_minutes
+      - can_split
+      - minimum_session_minutes
+      - earliest_date
+      - latest_date
+      - execution_status
+      - phase_id
+      - milestone_id
+      - batch_window
+      title: DraftTaskResponse
+      type: object
     ErrorCode:
       description: 对外错误码。
       enum:
@@ -84,6 +376,7 @@ components:
       - CONFIRMATION_REQUIRED
       - INPUT_STALE
       - MODEL_UNAVAILABLE
+      - GOAL_STATE_CONFLICT
       title: ErrorCode
       type: string
     ErrorResponse:
@@ -121,6 +414,306 @@ components:
       - request_id
       - retryable
       title: ErrorResponse
+      type: object
+    GeneratePlanRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        route_id:
+          description: 最终选定的路线
+          maxLength: 36
+          title: Route Id
+          type: string
+        start_date:
+          description: 计划开始日；开始日容量不足时草稿照常保存并返回建议前移日期（12 号第 2 节）
+          format: date
+          title: Start Date
+          type: string
+      required:
+      - expected_revision
+      - route_id
+      - start_date
+      title: GeneratePlanRequest
+      type: object
+    GenerateRoutesRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        profile_id:
+          description: 用于生成的已确认档案
+          maxLength: 36
+          title: Profile Id
+          type: string
+      required:
+      - expected_revision
+      - profile_id
+      title: GenerateRoutesRequest
+      type: object
+    GoalDomain:
+      description: 'Agent 的内部策略路由，不是用户必填标签（03 第 2 节）。
+
+
+        推断不足时使用 general。取值见 16-domain-policy-design.md 第 2 节。'
+      enum:
+      - general
+      - learning
+      - fitness
+      title: GoalDomain
+      type: string
+    GoalKind:
+      description: '目标形态，由档案的时间边界推导（PRD D12 已确认）。
+
+
+        completed 状态仅对 achievement 开放；maintenance 永不进入 completed。'
+      enum:
+      - achievement
+      - maintenance
+      title: GoalKind
+      type: string
+    GoalResponse:
+      description: 目标当前状态。生命周期字段的语义见 12-goal-lifecycle.md（D12）。
+      properties:
+        active_profile_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Active Profile Id
+        closed_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Closed At
+        closure_kind:
+          anyOf:
+          - $ref: '#/components/schemas/ClosureKind'
+          - type: 'null'
+        closure_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Closure Note
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        current_plan_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Plan Version Id
+        domain:
+          $ref: '#/components/schemas/GoalDomain'
+          description: Agent 的内部策略路由，不是用户必填标签
+        domain_confidence:
+          anyOf:
+          - type: number
+          - type: 'null'
+          description: 领域推断置信度，0–1；未推断时为空
+          title: Domain Confidence
+        id:
+          title: Id
+          type: string
+        kind:
+          $ref: '#/components/schemas/GoalKind'
+          description: 目标形态，由档案时间边界推导，随档案确认
+        pause_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pause Reason
+        paused_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Paused At
+        review_period:
+          $ref: '#/components/schemas/ReviewPeriod'
+          description: 维持型目标的回顾周期；达成型同样存储，不参与回顾
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        source_goal_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 非空表示本目标由该目标'以此为起点新建'派生而来
+          title: Source Goal Id
+        status:
+          $ref: '#/components/schemas/GoalStatus'
+        title:
+          title: Title
+          type: string
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - revision
+      - id
+      - title
+      - domain
+      - domain_confidence
+      - kind
+      - status
+      - review_period
+      - active_profile_id
+      - current_plan_version_id
+      - source_goal_id
+      - paused_at
+      - pause_reason
+      - closed_at
+      - closure_kind
+      - closure_note
+      - created_at
+      - updated_at
+      title: GoalResponse
+      type: object
+    GoalStatus:
+      description: '目标状态机（PRD D12；17-goal-lifecycle-design.md 第 2 节）。
+
+
+        draft → active ↔ paused；completed / stopped 是终态，不可逆，
+
+        仅结束操作后 24 小时内可经 undo_closure 回到结束前状态。'
+      enum:
+      - draft
+      - active
+      - paused
+      - completed
+      - stopped
+      title: GoalStatus
+      type: string
+    GoalTransitionResponse:
+      description: 暂停/恢复响应：目标状态 + 依赖影响。
+      properties:
+        active_profile_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Active Profile Id
+        affected_dependent_tasks:
+          description: 受本次暂停影响、将进入计算态 blocked 的他目标任务；仅在暂停操作中返回内容
+          items:
+            $ref: '#/components/schemas/AffectedDependency'
+          title: Affected Dependent Tasks
+          type: array
+        closed_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Closed At
+        closure_kind:
+          anyOf:
+          - $ref: '#/components/schemas/ClosureKind'
+          - type: 'null'
+        closure_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Closure Note
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        current_plan_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Plan Version Id
+        dependency_check:
+          $ref: '#/components/schemas/DependencyCheckStatus'
+          description: 依赖校验是否已接入。not_wired 时列表为空仅因'未检查'，不代表'无影响'
+        domain:
+          $ref: '#/components/schemas/GoalDomain'
+          description: Agent 的内部策略路由，不是用户必填标签
+        domain_confidence:
+          anyOf:
+          - type: number
+          - type: 'null'
+          description: 领域推断置信度，0–1；未推断时为空
+          title: Domain Confidence
+        id:
+          title: Id
+          type: string
+        kind:
+          $ref: '#/components/schemas/GoalKind'
+          description: 目标形态，由档案时间边界推导，随档案确认
+        pause_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pause Reason
+        paused_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Paused At
+        review_period:
+          $ref: '#/components/schemas/ReviewPeriod'
+          description: 维持型目标的回顾周期；达成型同样存储，不参与回顾
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        source_goal_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 非空表示本目标由该目标'以此为起点新建'派生而来
+          title: Source Goal Id
+        status:
+          $ref: '#/components/schemas/GoalStatus'
+        title:
+          title: Title
+          type: string
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - revision
+      - id
+      - title
+      - domain
+      - domain_confidence
+      - kind
+      - status
+      - review_period
+      - active_profile_id
+      - current_plan_version_id
+      - source_goal_id
+      - paused_at
+      - pause_reason
+      - closed_at
+      - closure_kind
+      - closure_note
+      - created_at
+      - updated_at
+      - affected_dependent_tasks
+      - dependency_check
+      title: GoalTransitionResponse
+      type: object
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          title: Detail
+          type: array
+      title: HTTPValidationError
       type: object
     HealthResponse:
       properties:
@@ -297,6 +890,328 @@ components:
       - password
       title: LoginRequest
       type: object
+    PauseGoalRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        reason:
+          anyOf:
+          - maxLength: 500
+            type: string
+          - type: 'null'
+          description: 暂停原因；记录但不设自动恢复
+          title: Reason
+      required:
+      - expected_revision
+      title: PauseGoalRequest
+      type: object
+    PlanChangeRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        request_text:
+          anyOf:
+          - maxLength: 4000
+            type: string
+          - type: 'null'
+          description: 自然语言修改
+          title: Request Text
+        structured_patch:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          description: 结构化修改；与 request_text 至少一项
+          title: Structured Patch
+      required:
+      - expected_revision
+      title: PlanChangeRequest
+      type: object
+    PlanDraftResponse:
+      description: 计划草稿：完整阶段与里程碑、开始日起七天详细任务、冲突与 stale 状态（R05、12 号第 8 节）。
+      properties:
+        conflicts:
+          description: 预算、期限、开始日容量等结构化冲突
+          items:
+            additionalProperties: true
+            type: object
+          title: Conflicts
+          type: array
+        detailed_through_date:
+          anyOf:
+          - format: date
+            type: string
+          - type: 'null'
+          description: 详细任务已覆盖到的日期；早于 today+3 天时触发滚动展开
+          title: Detailed Through Date
+        goal_id:
+          title: Goal Id
+          type: string
+        horizon_end:
+          anyOf:
+          - format: date
+            type: string
+          - type: 'null'
+          description: 达成型非空且展开不得越过；维持型可空
+          title: Horizon End
+        milestones:
+          items:
+            $ref: '#/components/schemas/PlanMilestoneResponse'
+          title: Milestones
+          type: array
+        phases:
+          items:
+            $ref: '#/components/schemas/PlanPhaseResponse'
+          title: Phases
+          type: array
+        plan_version_id:
+          title: Plan Version Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        stale:
+          description: 生成输入的 revision 已变化，结果需重新生成
+          title: Stale
+          type: boolean
+        stale_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stale Reason
+        start_date:
+          format: date
+          title: Start Date
+          type: string
+        status:
+          $ref: '#/components/schemas/PlanVersionStatus'
+        tasks:
+          description: 首个有效批次的详细任务
+          items:
+            $ref: '#/components/schemas/DraftTaskResponse'
+          title: Tasks
+          type: array
+      required:
+      - revision
+      - plan_version_id
+      - goal_id
+      - status
+      - start_date
+      - horizon_end
+      - detailed_through_date
+      - phases
+      - milestones
+      - tasks
+      - conflicts
+      - stale
+      - stale_reason
+      title: PlanDraftResponse
+      type: object
+    PlanMilestoneResponse:
+      properties:
+        milestone_key:
+          title: Milestone Key
+          type: string
+        phase_id:
+          title: Phase Id
+          type: string
+        rank:
+          minimum: 1.0
+          title: Rank
+          type: integer
+        success_criteria:
+          items:
+            additionalProperties: true
+            type: object
+          title: Success Criteria
+          type: array
+        target_window:
+          additionalProperties: true
+          title: Target Window
+          type: object
+        title:
+          title: Title
+          type: string
+      required:
+      - milestone_key
+      - phase_id
+      - rank
+      - title
+      - success_criteria
+      - target_window
+      title: PlanMilestoneResponse
+      type: object
+    PlanPhaseResponse:
+      properties:
+        duration_estimate:
+          additionalProperties: true
+          title: Duration Estimate
+          type: object
+        exit_criteria:
+          items:
+            additionalProperties: true
+            type: object
+          title: Exit Criteria
+          type: array
+        outcome:
+          title: Outcome
+          type: string
+        phase_key:
+          title: Phase Key
+          type: string
+        rank:
+          minimum: 1.0
+          title: Rank
+          type: integer
+        title:
+          title: Title
+          type: string
+      required:
+      - phase_key
+      - rank
+      - title
+      - outcome
+      - exit_criteria
+      - duration_estimate
+      title: PlanPhaseResponse
+      type: object
+    PlanVersionStatus:
+      description: 计划版本状态（03 第 3 节）。战略结构不可变；正常滚动展开不创建新版本。
+      enum:
+      - draft
+      - active
+      - superseded
+      - discarded
+      title: PlanVersionStatus
+      type: string
+    ProfileDraftReadiness:
+      description: 档案草稿的就绪状态（03 第 2 节）。
+      enum:
+      - needs_input
+      - review_ready
+      - blocked
+      title: ProfileDraftReadiness
+      type: string
+    ProfileDraftResponse:
+      description: 档案草稿。事实、推断、假设和未知可区分（R02）。
+      properties:
+        assumptions:
+          description: 已采用但未经用户确认的假设
+          items:
+            additionalProperties: true
+            type: object
+          title: Assumptions
+          type: array
+        content:
+          additionalProperties: true
+          description: 草稿正文，结构由澄清引擎版本决定
+          title: Content
+          type: object
+        contradictions:
+          description: 检测到的陈述矛盾
+          items:
+            additionalProperties: true
+            type: object
+          title: Contradictions
+          type: array
+        gaps:
+          description: 尚缺的关键事实
+          items:
+            additionalProperties: true
+            type: object
+          title: Gaps
+          type: array
+        goal_id:
+          title: Goal Id
+          type: string
+        readiness:
+          $ref: '#/components/schemas/ProfileDraftReadiness'
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        source_map:
+          additionalProperties: true
+          description: 各字段来源：用户陈述、推断或建议
+          title: Source Map
+          type: object
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - revision
+      - goal_id
+      - content
+      - source_map
+      - gaps
+      - assumptions
+      - contradictions
+      - readiness
+      - updated_at
+      title: ProfileDraftResponse
+      type: object
+    ProfileResponse:
+      description: 不可变的已确认档案版本。
+      properties:
+        baseline:
+          additionalProperties: true
+          title: Baseline
+          type: object
+        confirmed_at:
+          format: date-time
+          title: Confirmed At
+          type: string
+        constraints:
+          additionalProperties: true
+          title: Constraints
+          type: object
+        facts:
+          additionalProperties: true
+          description: 用户事实、假设、建议分别带来源与确认状态
+          title: Facts
+          type: object
+        goal_id:
+          title: Goal Id
+          type: string
+        id:
+          title: Id
+          type: string
+        result_definition:
+          title: Result Definition
+          type: string
+        success_criteria:
+          description: 成功标准逐条列表，含标识与验证方式
+          items:
+            additionalProperties: true
+            type: object
+          title: Success Criteria
+          type: array
+        version_no:
+          minimum: 1.0
+          title: Version No
+          type: integer
+      required:
+      - id
+      - goal_id
+      - version_no
+      - result_definition
+      - success_criteria
+      - baseline
+      - constraints
+      - facts
+      - confirmed_at
+      title: ProfileResponse
+      type: object
     RegisterRequest:
       properties:
         account_identifier:
@@ -354,6 +1269,265 @@ components:
       - new_password
       title: ResetPasswordRequest
       type: object
+    ResumeGoalRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: ResumeGoalRequest
+      type: object
+    ReviewPeriod:
+      description: 维持型目标的周期回顾节奏（12-goal-lifecycle.md 第 4 节，默认 weekly）。
+      enum:
+      - weekly
+      - biweekly
+      - monthly
+      title: ReviewPeriod
+      type: string
+    RouteResponse:
+      description: 结构化路线（11 号第 4 节）。
+      properties:
+        approach:
+          title: Approach
+          type: string
+        assumptions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Assumptions
+          type: array
+        based_on_route_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 非空表示由该路线微调产生的变体
+          title: Based On Route Id
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        derived_metrics:
+          $ref: '#/components/schemas/DerivedMetric'
+        difference_keys:
+          description: 与其他候选的差异维度，取自受控枚举（11 号第 5 节）
+          items:
+            type: string
+          title: Difference Keys
+          type: array
+        duration_range:
+          additionalProperties: true
+          title: Duration Range
+          type: object
+        id:
+          title: Id
+          type: string
+        phase_outline:
+          description: 每阶段成果、预计周数及每周分钟数
+          items:
+            additionalProperties: true
+            type: object
+          title: Phase Outline
+          type: array
+        required_resources:
+          items:
+            additionalProperties: true
+            type: object
+          title: Required Resources
+          type: array
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        risks:
+          items:
+            additionalProperties: true
+            type: object
+          title: Risks
+          type: array
+        route_set_id:
+          title: Route Set Id
+          type: string
+        status:
+          $ref: '#/components/schemas/RouteStatus'
+        title:
+          title: Title
+          type: string
+        tradeoffs:
+          items:
+            additionalProperties: true
+            type: object
+          title: Tradeoffs
+          type: array
+        weekly_minutes:
+          minimum: 0.0
+          title: Weekly Minutes
+          type: integer
+      required:
+      - revision
+      - id
+      - route_set_id
+      - status
+      - based_on_route_id
+      - title
+      - approach
+      - difference_keys
+      - duration_range
+      - phase_outline
+      - weekly_minutes
+      - tradeoffs
+      - risks
+      - assumptions
+      - required_resources
+      - derived_metrics
+      - created_at
+      title: RouteResponse
+      type: object
+    RouteSelectionResponse:
+      description: 路线选择结果。选择动作不创建正式任务（11 号第 7 节）。
+      properties:
+        goal_id:
+          title: Goal Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        route_id:
+          title: Route Id
+          type: string
+        selected_at:
+          format: date-time
+          title: Selected At
+          type: string
+      required:
+      - revision
+      - goal_id
+      - route_id
+      - selected_at
+      title: RouteSelectionResponse
+      type: object
+    RouteSetResponse:
+      description: 当前可比较的整组路线与派生冲突（11 号第 8 节）。
+      properties:
+        availability_revision:
+          description: 生成时所处的可用时间版本
+          title: Availability Revision
+          type: integer
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        goal_id:
+          title: Goal Id
+          type: string
+        id:
+          title: Id
+          type: string
+        invalidated_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Invalidated Reason
+        planning_revision:
+          description: 生成时所处的 planning revision；与当前值不一致即为 stale
+          title: Planning Revision
+          type: integer
+        profile_id:
+          title: Profile Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        routes:
+          items:
+            $ref: '#/components/schemas/RouteResponse'
+          title: Routes
+          type: array
+        status:
+          $ref: '#/components/schemas/RouteSetStatus'
+      required:
+      - revision
+      - id
+      - goal_id
+      - profile_id
+      - status
+      - invalidated_reason
+      - planning_revision
+      - availability_revision
+      - routes
+      - created_at
+      title: RouteSetResponse
+      type: object
+    RouteSetStatus:
+      description: 路线集合状态。新集合不覆盖旧集合；输入 revision 变化使晚返回结果 stale（11 号第 3、6 节）。
+      enum:
+      - current
+      - superseded
+      - stale
+      - failed
+      title: RouteSetStatus
+      type: string
+    RouteStatus:
+      description: 单条路线状态。微调创建 based_on_route_id 指向原路线的新变体（11 号第 6 节）。
+      enum:
+      - current
+      - superseded
+      title: RouteStatus
+      type: string
+    RouteVariantRequest:
+      properties:
+        adjustment:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          description: 结构化微调；与 natural_language 二选一
+          title: Adjustment
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        natural_language:
+          anyOf:
+          - maxLength: 4000
+            type: string
+          - type: 'null'
+          description: 自然语言微调要求
+          title: Natural Language
+        route_id:
+          maxLength: 36
+          title: Route Id
+          type: string
+      required:
+      - expected_revision
+      - route_id
+      title: RouteVariantRequest
+      type: object
+    SelectRouteRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        route_id:
+          maxLength: 36
+          title: Route Id
+          type: string
+      required:
+      - expected_revision
+      - route_id
+      title: SelectRouteRequest
+      type: object
     SessionInfo:
       properties:
         created_at:
@@ -370,6 +1544,97 @@ components:
       - expires_at
       title: SessionInfo
       type: object
+    TaskExecutionStatus:
+      description: '任务执行状态（03 第 3 节）。
+
+
+        blocked 是排期计算得到的展示态，不落库；paused 目标下的任务不改写执行状态（D12）。'
+      enum:
+      - proposed
+      - pending
+      - in_progress
+      - completed
+      - cancelled
+      title: TaskExecutionStatus
+      type: string
+    TaskExecutor:
+      description: 任务的执行者类型（12 号第 4 节：用户任务、Agent 任务和协作任务分别计算用户投入）。
+      enum:
+      - user
+      - agent
+      - collaborative
+      title: TaskExecutor
+      type: string
+    UndoClosureRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: UndoClosureRequest
+      type: object
+    UpdateDraftTaskRequest:
+      properties:
+        expected_minutes:
+          anyOf:
+          - minimum: 0.0
+            type: integer
+          - type: 'null'
+          title: Expected Minutes
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        instructions:
+          anyOf:
+          - maxLength: 8000
+            type: string
+          - type: 'null'
+          title: Instructions
+        maximum_minutes:
+          anyOf:
+          - minimum: 0.0
+            type: integer
+          - type: 'null'
+          title: Maximum Minutes
+        minimum_minutes:
+          anyOf:
+          - minimum: 0.0
+            type: integer
+          - type: 'null'
+          title: Minimum Minutes
+        title:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Title
+      required:
+      - expected_revision
+      title: UpdateDraftTaskRequest
+      type: object
+    UpdateProfileDraftRequest:
+      properties:
+        edits:
+          additionalProperties: true
+          description: 用户对草稿的直接编辑；基于旧档案的模型预览将标记 stale（05 第 2 节）
+          title: Edits
+          type: object
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      - edits
+      title: UpdateProfileDraftRequest
+      type: object
     UserRole:
       description: 账号角色。首位注册者不自动成为管理员，只能由部署者本地命令授予。
       enum:
@@ -377,6 +1642,32 @@ components:
       - admin
       title: UserRole
       type: string
+    ValidationError:
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+      type: object
 info:
   description: GoalFlow 的 HTTP 契约事实源。本文档由 scripts/api-generate.sh 导出，禁止手工编辑。
   title: GoalFlow API
@@ -626,6 +1917,1307 @@ paths:
       summary: 当前用户与会话
       tags:
       - auth
+  /api/goals:
+    post:
+      description: 从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。
+      operationId: create_goal_api_goals_post
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 创建目标
+      tags:
+      - goals
+  /api/goals/{goal_id}:
+    get:
+      operationId: read_goal_api_goals__goal_id__get
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 读取目标
+      tags:
+      - goals
+  /api/goals/{goal_id}/activation:
+    post:
+      description: 幂等启用：同一事务内切换计划为 active、目标 draft → active（T04 决策 A10）、首批 proposed 任务转为 pending，并触发当日安排重算。预算冲突不部分启用。
+      operationId: activate_plan_api_goals__goal_id__activation_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivatePlanRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 启用当前计划草稿
+      tags:
+      - goals
+  /api/goals/{goal_id}/closure:
+    post:
+      description: active → completed / stopped，终态不可逆。completed 仅对达成型开放；成功标准逐条确认随操作写入快照（17 号第 4 节）。
+      operationId: close_goal_api_goals__goal_id__closure_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseGoalRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 结束目标
+      tags:
+      - goals
+  /api/goals/{goal_id}/closure-undo:
+    post:
+      description: 结束操作后 24 小时内可撤销，回到结束前状态（D12 第 6 节）；窗口外返回 GOAL_STATE_CONFLICT。
+      operationId: undo_closure_api_goals__goal_id__closure_undo_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndoClosureRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 撤销结束
+      tags:
+      - goals
+  /api/goals/{goal_id}/derivation:
+    post:
+      description: 复制源目标最新档案内容为新目标的档案草稿，不复制计划、任务与执行记录；源目标保持终态（17 号第 4 节）。
+      operationId: derive_goal_api_goals__goal_id__derivation_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeriveGoalRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 以此为起点新建
+      tags:
+      - goals
+  /api/goals/{goal_id}/pause:
+    post:
+      description: active → paused。不改写任何任务状态，周投入需求从共享预算释放；响应携带受影响的跨目标依赖（D12 第 5 节）。
+      operationId: pause_goal_api_goals__goal_id__pause_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PauseGoalRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalTransitionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 暂停目标
+      tags:
+      - goals
+  /api/goals/{goal_id}/plan-change-requests:
+    post:
+      description: 自然语言或结构化修改；服务端重新计算影响并分类（12 号第 6 节）。
+      operationId: request_plan_change_api_goals__goal_id__plan_change_requests_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanChangeRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE）
+      summary: 提交计划修改请求
+      tags:
+      - goals
+  /api/goals/{goal_id}/plan-drafts/current:
+    get:
+      description: 返回阶段、里程碑、七日任务批次、冲突和 stale 状态（05 第 2 节）。
+      operationId: read_plan_draft_api_goals__goal_id__plan_drafts_current_get
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDraftResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 读取计划草稿
+      tags:
+      - goals
+  /api/goals/{goal_id}/plan-drafts/current/tasks/{task_id}:
+    patch:
+      description: 创建新 task_spec，保留原版本（03 第 3 节）。
+      operationId: update_draft_task_api_goals__goal_id__plan_drafts_current_tasks__task_id__patch
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - description: 任务 ID
+        in: path
+        name: task_id
+        required: true
+        schema:
+          description: 任务 ID
+          maxLength: 36
+          title: Task Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDraftTaskRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftTaskResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 编辑草稿任务
+      tags:
+      - goals
+  /api/goals/{goal_id}/plan-generations:
+    post:
+      description: 由选定路线生成计划草稿与首个七日任务批次（12 号第 2 节）。不启用。开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期。
+      operationId: generate_plan_api_goals__goal_id__plan_generations_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratePlanRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE）
+      summary: 提交计划草稿生成作业
+      tags:
+      - goals
+  /api/goals/{goal_id}/profile-confirmations:
+    post:
+      description: 创建不可变档案版本，并原子更新 goals.active_profile_id 与 planning_session（03 第 2 节）。模型晚返回时草稿 revision
+        不匹配的结果被拒。
+      operationId: confirm_profile_api_goals__goal_id__profile_confirmations_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmProfileRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 确认档案
+      tags:
+      - goals
+  /api/goals/{goal_id}/profile-draft:
+    get:
+      description: 返回草稿字段、来源、缺口、假设、矛盾及 readiness（05 第 2 节）。
+      operationId: read_profile_draft_api_goals__goal_id__profile_draft_get
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileDraftResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 读取档案草稿
+      tags:
+      - goals
+    patch:
+      operationId: update_profile_draft_api_goals__goal_id__profile_draft_patch
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileDraftRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileDraftResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 编辑档案草稿
+      tags:
+      - goals
+  /api/goals/{goal_id}/resume:
+    post:
+      description: paused → active。不把积压任务搬到今天；共享预算已被占满时返回冲突供取舍（D12 第 5 节）。
+      operationId: resume_goal_api_goals__goal_id__resume_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeGoalRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalTransitionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 恢复目标
+      tags:
+      - goals
+  /api/goals/{goal_id}/route-generations:
+    post:
+      description: 从已确认档案生成整组可比较路线（11 号第 3 节）。异步：返回 202 与作业引用。
+      operationId: generate_routes_api_goals__goal_id__route_generations_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRoutesRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE）
+      summary: 提交路线生成作业
+      tags:
+      - goals
+  /api/goals/{goal_id}/route-selection:
+    post:
+      operationId: select_route_api_goals__goal_id__route_selection_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectRouteRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteSelectionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 记录路线选择
+      tags:
+      - goals
+  /api/goals/{goal_id}/route-sets/current:
+    get:
+      description: 返回当前集合、统一比较字段、派生冲突和 stale 状态（11 号第 8 节）。
+      operationId: read_current_routes_api_goals__goal_id__route_sets_current_get
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteSetResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+      summary: 读取当前路线集合
+      tags:
+      - goals
+  /api/goals/{goal_id}/route-variants:
+    post:
+      description: 结构化微调创建变体；改变核心方法时返回需重新生成集合的结果（11 号第 6 节）。
+      operationId: revise_route_api_goals__goal_id__route_variants_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteVariantRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（实现在 T04 业务实现 PR 交付）
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE）
+      summary: 提交路线微调
+      tags:
+      - goals
   /api/health:
     get:
       description: 不校验会话，不访问数据库。只表示进程能响应请求。

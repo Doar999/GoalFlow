@@ -161,6 +161,361 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建目标
+         * @description 从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。
+         */
+        post: operations["create_goal_api_goals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取目标 */
+        get: operations["read_goal_api_goals__goal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 启用当前计划草稿
+         * @description 幂等启用：同一事务内切换计划为 active、目标 draft → active（T04 决策 A10）、首批 proposed 任务转为 pending，并触发当日安排重算。预算冲突不部分启用。
+         */
+        post: operations["activate_plan_api_goals__goal_id__activation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/closure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 结束目标
+         * @description active → completed / stopped，终态不可逆。completed 仅对达成型开放；成功标准逐条确认随操作写入快照（17 号第 4 节）。
+         */
+        post: operations["close_goal_api_goals__goal_id__closure_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/closure-undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 撤销结束
+         * @description 结束操作后 24 小时内可撤销，回到结束前状态（D12 第 6 节）；窗口外返回 GOAL_STATE_CONFLICT。
+         */
+        post: operations["undo_closure_api_goals__goal_id__closure_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/derivation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 以此为起点新建
+         * @description 复制源目标最新档案内容为新目标的档案草稿，不复制计划、任务与执行记录；源目标保持终态（17 号第 4 节）。
+         */
+        post: operations["derive_goal_api_goals__goal_id__derivation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 暂停目标
+         * @description active → paused。不改写任何任务状态，周投入需求从共享预算释放；响应携带受影响的跨目标依赖（D12 第 5 节）。
+         */
+        post: operations["pause_goal_api_goals__goal_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/plan-change-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交计划修改请求
+         * @description 自然语言或结构化修改；服务端重新计算影响并分类（12 号第 6 节）。
+         */
+        post: operations["request_plan_change_api_goals__goal_id__plan_change_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/plan-drafts/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取计划草稿
+         * @description 返回阶段、里程碑、七日任务批次、冲突和 stale 状态（05 第 2 节）。
+         */
+        get: operations["read_plan_draft_api_goals__goal_id__plan_drafts_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/plan-drafts/current/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 编辑草稿任务
+         * @description 创建新 task_spec，保留原版本（03 第 3 节）。
+         */
+        patch: operations["update_draft_task_api_goals__goal_id__plan_drafts_current_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/plan-generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交计划草稿生成作业
+         * @description 由选定路线生成计划草稿与首个七日任务批次（12 号第 2 节）。不启用。开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期。
+         */
+        post: operations["generate_plan_api_goals__goal_id__plan_generations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/profile-confirmations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 确认档案
+         * @description 创建不可变档案版本，并原子更新 goals.active_profile_id 与 planning_session（03 第 2 节）。模型晚返回时草稿 revision 不匹配的结果被拒。
+         */
+        post: operations["confirm_profile_api_goals__goal_id__profile_confirmations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/profile-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取档案草稿
+         * @description 返回草稿字段、来源、缺口、假设、矛盾及 readiness（05 第 2 节）。
+         */
+        get: operations["read_profile_draft_api_goals__goal_id__profile_draft_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 编辑档案草稿 */
+        patch: operations["update_profile_draft_api_goals__goal_id__profile_draft_patch"];
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 恢复目标
+         * @description paused → active。不把积压任务搬到今天；共享预算已被占满时返回冲突供取舍（D12 第 5 节）。
+         */
+        post: operations["resume_goal_api_goals__goal_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/route-generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交路线生成作业
+         * @description 从已确认档案生成整组可比较路线（11 号第 3 节）。异步：返回 202 与作业引用。
+         */
+        post: operations["generate_routes_api_goals__goal_id__route_generations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/route-selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 记录路线选择 */
+        post: operations["select_route_api_goals__goal_id__route_selection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/route-sets/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取当前路线集合
+         * @description 返回当前集合、统一比较字段、派生冲突和 stale 状态（11 号第 8 节）。
+         */
+        get: operations["read_current_routes_api_goals__goal_id__route_sets_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/route-variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交路线微调
+         * @description 结构化微调创建变体；改变核心方法时返回需重新生成集合的结果（11 号第 6 节）。
+         */
+        post: operations["revise_route_api_goals__goal_id__route_variants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -261,6 +616,62 @@ export interface components {
              */
             timezone: string;
         };
+        /** ActivatePlanRequest */
+        ActivatePlanRequest: {
+            /** Draft Plan Id */
+            draft_plan_id: string;
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Planning Revision
+             * @description 客户端读到的 planning revision；过期返回 INPUT_STALE
+             */
+            planning_revision: number;
+        };
+        /**
+         * ActivationResponse
+         * @description 启用结果。幂等：重复请求返回同一结果，不重复创建任务（12 号第 7 节）。
+         */
+        ActivationResponse: {
+            /**
+             * Activated At
+             * Format: date-time
+             */
+            activated_at: string;
+            /**
+             * First Batch Window
+             * @description 首个批次的 window_start / window_end
+             */
+            first_batch_window: {
+                [key: string]: unknown;
+            };
+            /** Goal Id */
+            goal_id: string;
+            /**
+             * Plan Version Id
+             * @description 切换为 active 的计划版本；目标状态同步 draft → active（T04 决策 A10）
+             */
+            plan_version_id: string;
+        };
+        /**
+         * AffectedDependency
+         * @description 暂停目标时受影响的跨目标依赖项。取值由 T06 的依赖图计算，接入前恒为空列表（T04 决策 A12）。
+         */
+        AffectedDependency: {
+            /**
+             * Goal Id
+             * @description 依赖方（后继任务）所属目标
+             */
+            goal_id: string;
+            /**
+             * Task Id
+             * @description 将被计算态 blocked 的后继任务
+             */
+            task_id: string;
+        };
         /**
          * AuthSessionResponse
          * @description 当前用户与会话元数据。不包含会话令牌。
@@ -291,12 +702,164 @@ export interface components {
              */
             new_password: string;
         };
+        /** CloseGoalRequest */
+        CloseGoalRequest: {
+            closure_kind: components["schemas"]["ClosureKind"];
+            /**
+             * Criteria Confirmations
+             * @description 成功标准逐条确认；随结束操作写入快照，撤销后可还原（17 号第 4 节）
+             */
+            criteria_confirmations: components["schemas"]["CriterionConfirmation"][];
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * ClosureKind
+         * @description 结束方式。completed 仅对 kind=achievement 开放（17 号第 2 节）。
+         * @enum {string}
+         */
+        ClosureKind: "completed" | "stopped";
+        /** ConfirmProfileRequest */
+        ConfirmProfileRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /** CreateGoalRequest */
+        CreateGoalRequest: {
+            /**
+             * Initial Description
+             * @description 自然语言目标描述，作为澄清对话的起点（R02）
+             */
+            initial_description?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * CriterionConfirmation
+         * @description 结束目标时对单条成功标准的确认。快照整体写入 goals.closure_criteria_snapshot_json（T04 决策 A8）。
+         */
+        CriterionConfirmation: {
+            /**
+             * Criterion Key
+             * @description 成功标准的标识，来自已确认档案的 success_criteria
+             */
+            criterion_key: string;
+            /**
+             * Met
+             * @description 该标准是否已达成；允许部分达成时标记完成并记录未达成项（D12 第 3 节）
+             */
+            met: boolean;
+            /**
+             * Note
+             * @description 对未达成项的记录说明
+             */
+            note?: string | null;
+        };
+        /**
+         * DependencyCheckStatus
+         * @description 暂停响应中跨目标依赖影响的检查标记（T04 决策 A12）。
+         *
+         *     not_wired 表示依赖校验尚未接入（T06 建 task_dependencies 前），此时影响列表为空
+         *     仅因"未检查"，不代表"无影响"。
+         * @enum {string}
+         */
+        DependencyCheckStatus: "wired" | "not_wired";
+        /** DeriveGoalRequest */
+        DeriveGoalRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /**
+         * DerivedMetric
+         * @description 服务端计算的路线派生指标，模型不能覆盖（11 号第 4 节）。
+         */
+        DerivedMetric: {
+            /** Available Weekly Minutes */
+            available_weekly_minutes: number;
+            /** Budget Gap Minutes */
+            budget_gap_minutes: number;
+            /**
+             * Conflicts
+             * @description 预算、期限或与其他目标的冲突
+             */
+            conflicts?: {
+                [key: string]: unknown;
+            }[];
+            /** Peak Weekly Minutes */
+            peak_weekly_minutes: number;
+            /** Recommendation Eligible */
+            recommendation_eligible: boolean;
+            /** Total Estimated Minutes */
+            total_estimated_minutes: number;
+        };
+        /**
+         * DraftTaskResponse
+         * @description 计划草稿中的任务。draft 计划的任务为 proposed，不出现在正式待办（R05）。
+         */
+        DraftTaskResponse: {
+            /**
+             * Batch Window
+             * @description 所属批次的 window_start / window_end
+             */
+            batch_window: {
+                [key: string]: unknown;
+            };
+            /** Can Split */
+            can_split: boolean;
+            /** Earliest Date */
+            earliest_date: string | null;
+            execution_status: components["schemas"]["TaskExecutionStatus"];
+            executor: components["schemas"]["TaskExecutor"];
+            /** Expected Minutes */
+            expected_minutes: number;
+            /**
+             * Latest Date
+             * Format: date
+             * @description 非空；由计划生成时推导（05-module-contracts 默认值表）
+             */
+            latest_date: string;
+            /** Maximum Minutes */
+            maximum_minutes: number;
+            /** Milestone Id */
+            milestone_id: string | null;
+            /** Minimum Minutes */
+            minimum_minutes: number;
+            /** Minimum Session Minutes */
+            minimum_session_minutes: number | null;
+            /** Phase Id */
+            phase_id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Spec No
+             * @description 内容版本号；草稿编辑产生新 spec，原 spec 保留
+             */
+            spec_no: number;
+            /** Task Id */
+            task_id: string;
+            /** Title */
+            title: string;
+        };
         /**
          * ErrorCode
          * @description 对外错误码。
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_IDENTIFIER_UNAVAILABLE" | "REGISTRATION_CLOSED" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE";
+        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_IDENTIFIER_UNAVAILABLE" | "REGISTRATION_CLOSED" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE" | "GOAL_STATE_CONFLICT";
         /**
          * ErrorResponse
          * @description 所有 API 错误的唯一响应体。各模块不得自定义错误体。
@@ -333,6 +896,185 @@ export interface components {
              * @description 原样重试是否有意义
              */
             retryable: boolean;
+        };
+        /** GeneratePlanRequest */
+        GeneratePlanRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Route Id
+             * @description 最终选定的路线
+             */
+            route_id: string;
+            /**
+             * Start Date
+             * Format: date
+             * @description 计划开始日；开始日容量不足时草稿照常保存并返回建议前移日期（12 号第 2 节）
+             */
+            start_date: string;
+        };
+        /** GenerateRoutesRequest */
+        GenerateRoutesRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Profile Id
+             * @description 用于生成的已确认档案
+             */
+            profile_id: string;
+        };
+        /**
+         * GoalDomain
+         * @description Agent 的内部策略路由，不是用户必填标签（03 第 2 节）。
+         *
+         *     推断不足时使用 general。取值见 16-domain-policy-design.md 第 2 节。
+         * @enum {string}
+         */
+        GoalDomain: "general" | "learning" | "fitness";
+        /**
+         * GoalKind
+         * @description 目标形态，由档案的时间边界推导（PRD D12 已确认）。
+         *
+         *     completed 状态仅对 achievement 开放；maintenance 永不进入 completed。
+         * @enum {string}
+         */
+        GoalKind: "achievement" | "maintenance";
+        /**
+         * GoalResponse
+         * @description 目标当前状态。生命周期字段的语义见 12-goal-lifecycle.md（D12）。
+         */
+        GoalResponse: {
+            /** Active Profile Id */
+            active_profile_id: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            closure_kind: components["schemas"]["ClosureKind"] | null;
+            /** Closure Note */
+            closure_note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Plan Version Id */
+            current_plan_version_id: string | null;
+            /** @description Agent 的内部策略路由，不是用户必填标签 */
+            domain: components["schemas"]["GoalDomain"];
+            /**
+             * Domain Confidence
+             * @description 领域推断置信度，0–1；未推断时为空
+             */
+            domain_confidence: number | null;
+            /** Id */
+            id: string;
+            /** @description 目标形态，由档案时间边界推导，随档案确认 */
+            kind: components["schemas"]["GoalKind"];
+            /** Pause Reason */
+            pause_reason: string | null;
+            /** Paused At */
+            paused_at: string | null;
+            /** @description 维持型目标的回顾周期；达成型同样存储，不参与回顾 */
+            review_period: components["schemas"]["ReviewPeriod"];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Source Goal Id
+             * @description 非空表示本目标由该目标'以此为起点新建'派生而来
+             */
+            source_goal_id: string | null;
+            status: components["schemas"]["GoalStatus"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * GoalStatus
+         * @description 目标状态机（PRD D12；17-goal-lifecycle-design.md 第 2 节）。
+         *
+         *     draft → active ↔ paused；completed / stopped 是终态，不可逆，
+         *     仅结束操作后 24 小时内可经 undo_closure 回到结束前状态。
+         * @enum {string}
+         */
+        GoalStatus: "draft" | "active" | "paused" | "completed" | "stopped";
+        /**
+         * GoalTransitionResponse
+         * @description 暂停/恢复响应：目标状态 + 依赖影响。
+         */
+        GoalTransitionResponse: {
+            /** Active Profile Id */
+            active_profile_id: string | null;
+            /**
+             * Affected Dependent Tasks
+             * @description 受本次暂停影响、将进入计算态 blocked 的他目标任务；仅在暂停操作中返回内容
+             */
+            affected_dependent_tasks: components["schemas"]["AffectedDependency"][];
+            /** Closed At */
+            closed_at: string | null;
+            closure_kind: components["schemas"]["ClosureKind"] | null;
+            /** Closure Note */
+            closure_note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Plan Version Id */
+            current_plan_version_id: string | null;
+            /** @description 依赖校验是否已接入。not_wired 时列表为空仅因'未检查'，不代表'无影响' */
+            dependency_check: components["schemas"]["DependencyCheckStatus"];
+            /** @description Agent 的内部策略路由，不是用户必填标签 */
+            domain: components["schemas"]["GoalDomain"];
+            /**
+             * Domain Confidence
+             * @description 领域推断置信度，0–1；未推断时为空
+             */
+            domain_confidence: number | null;
+            /** Id */
+            id: string;
+            /** @description 目标形态，由档案时间边界推导，随档案确认 */
+            kind: components["schemas"]["GoalKind"];
+            /** Pause Reason */
+            pause_reason: string | null;
+            /** Paused At */
+            paused_at: string | null;
+            /** @description 维持型目标的回顾周期；达成型同样存储，不参与回顾 */
+            review_period: components["schemas"]["ReviewPeriod"];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Source Goal Id
+             * @description 非空表示本目标由该目标'以此为起点新建'派生而来
+             */
+            source_goal_id: string | null;
+            status: components["schemas"]["GoalStatus"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /** HealthResponse */
         HealthResponse: {
@@ -458,6 +1200,238 @@ export interface components {
              */
             password: string;
         };
+        /** PauseGoalRequest */
+        PauseGoalRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Reason
+             * @description 暂停原因；记录但不设自动恢复
+             */
+            reason?: string | null;
+        };
+        /** PlanChangeRequest */
+        PlanChangeRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Request Text
+             * @description 自然语言修改
+             */
+            request_text?: string | null;
+            /**
+             * Structured Patch
+             * @description 结构化修改；与 request_text 至少一项
+             */
+            structured_patch?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * PlanDraftResponse
+         * @description 计划草稿：完整阶段与里程碑、开始日起七天详细任务、冲突与 stale 状态（R05、12 号第 8 节）。
+         */
+        PlanDraftResponse: {
+            /**
+             * Conflicts
+             * @description 预算、期限、开始日容量等结构化冲突
+             */
+            conflicts: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Detailed Through Date
+             * @description 详细任务已覆盖到的日期；早于 today+3 天时触发滚动展开
+             */
+            detailed_through_date: string | null;
+            /** Goal Id */
+            goal_id: string;
+            /**
+             * Horizon End
+             * @description 达成型非空且展开不得越过；维持型可空
+             */
+            horizon_end: string | null;
+            /** Milestones */
+            milestones: components["schemas"]["PlanMilestoneResponse"][];
+            /** Phases */
+            phases: components["schemas"]["PlanPhaseResponse"][];
+            /** Plan Version Id */
+            plan_version_id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Stale
+             * @description 生成输入的 revision 已变化，结果需重新生成
+             */
+            stale: boolean;
+            /** Stale Reason */
+            stale_reason: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["PlanVersionStatus"];
+            /**
+             * Tasks
+             * @description 首个有效批次的详细任务
+             */
+            tasks: components["schemas"]["DraftTaskResponse"][];
+        };
+        /** PlanMilestoneResponse */
+        PlanMilestoneResponse: {
+            /** Milestone Key */
+            milestone_key: string;
+            /** Phase Id */
+            phase_id: string;
+            /** Rank */
+            rank: number;
+            /** Success Criteria */
+            success_criteria: {
+                [key: string]: unknown;
+            }[];
+            /** Target Window */
+            target_window: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+        };
+        /** PlanPhaseResponse */
+        PlanPhaseResponse: {
+            /** Duration Estimate */
+            duration_estimate: {
+                [key: string]: unknown;
+            };
+            /** Exit Criteria */
+            exit_criteria: {
+                [key: string]: unknown;
+            }[];
+            /** Outcome */
+            outcome: string;
+            /** Phase Key */
+            phase_key: string;
+            /** Rank */
+            rank: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PlanVersionStatus
+         * @description 计划版本状态（03 第 3 节）。战略结构不可变；正常滚动展开不创建新版本。
+         * @enum {string}
+         */
+        PlanVersionStatus: "draft" | "active" | "superseded" | "discarded";
+        /**
+         * ProfileDraftReadiness
+         * @description 档案草稿的就绪状态（03 第 2 节）。
+         * @enum {string}
+         */
+        ProfileDraftReadiness: "needs_input" | "review_ready" | "blocked";
+        /**
+         * ProfileDraftResponse
+         * @description 档案草稿。事实、推断、假设和未知可区分（R02）。
+         */
+        ProfileDraftResponse: {
+            /**
+             * Assumptions
+             * @description 已采用但未经用户确认的假设
+             */
+            assumptions: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Content
+             * @description 草稿正文，结构由澄清引擎版本决定
+             */
+            content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Contradictions
+             * @description 检测到的陈述矛盾
+             */
+            contradictions: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Gaps
+             * @description 尚缺的关键事实
+             */
+            gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Goal Id */
+            goal_id: string;
+            readiness: components["schemas"]["ProfileDraftReadiness"];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Source Map
+             * @description 各字段来源：用户陈述、推断或建议
+             */
+            source_map: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProfileResponse
+         * @description 不可变的已确认档案版本。
+         */
+        ProfileResponse: {
+            /** Baseline */
+            baseline: {
+                [key: string]: unknown;
+            };
+            /**
+             * Confirmed At
+             * Format: date-time
+             */
+            confirmed_at: string;
+            /** Constraints */
+            constraints: {
+                [key: string]: unknown;
+            };
+            /**
+             * Facts
+             * @description 用户事实、假设、建议分别带来源与确认状态
+             */
+            facts: {
+                [key: string]: unknown;
+            };
+            /** Goal Id */
+            goal_id: string;
+            /** Id */
+            id: string;
+            /** Result Definition */
+            result_definition: string;
+            /**
+             * Success Criteria
+             * @description 成功标准逐条列表，含标识与验证方式
+             */
+            success_criteria: {
+                [key: string]: unknown;
+            }[];
+            /** Version No */
+            version_no: number;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -500,6 +1474,186 @@ export interface components {
              */
             token: string;
         };
+        /** ResumeGoalRequest */
+        ResumeGoalRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /**
+         * ReviewPeriod
+         * @description 维持型目标的周期回顾节奏（12-goal-lifecycle.md 第 4 节，默认 weekly）。
+         * @enum {string}
+         */
+        ReviewPeriod: "weekly" | "biweekly" | "monthly";
+        /**
+         * RouteResponse
+         * @description 结构化路线（11 号第 4 节）。
+         */
+        RouteResponse: {
+            /** Approach */
+            approach: string;
+            /** Assumptions */
+            assumptions: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Based On Route Id
+             * @description 非空表示由该路线微调产生的变体
+             */
+            based_on_route_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            derived_metrics: components["schemas"]["DerivedMetric"];
+            /**
+             * Difference Keys
+             * @description 与其他候选的差异维度，取自受控枚举（11 号第 5 节）
+             */
+            difference_keys: string[];
+            /** Duration Range */
+            duration_range: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /**
+             * Phase Outline
+             * @description 每阶段成果、预计周数及每周分钟数
+             */
+            phase_outline: {
+                [key: string]: unknown;
+            }[];
+            /** Required Resources */
+            required_resources: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /** Risks */
+            risks: {
+                [key: string]: unknown;
+            }[];
+            /** Route Set Id */
+            route_set_id: string;
+            status: components["schemas"]["RouteStatus"];
+            /** Title */
+            title: string;
+            /** Tradeoffs */
+            tradeoffs: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Minutes */
+            weekly_minutes: number;
+        };
+        /**
+         * RouteSelectionResponse
+         * @description 路线选择结果。选择动作不创建正式任务（11 号第 7 节）。
+         */
+        RouteSelectionResponse: {
+            /** Goal Id */
+            goal_id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /** Route Id */
+            route_id: string;
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+        };
+        /**
+         * RouteSetResponse
+         * @description 当前可比较的整组路线与派生冲突（11 号第 8 节）。
+         */
+        RouteSetResponse: {
+            /**
+             * Availability Revision
+             * @description 生成时所处的可用时间版本
+             */
+            availability_revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Goal Id */
+            goal_id: string;
+            /** Id */
+            id: string;
+            /** Invalidated Reason */
+            invalidated_reason: string | null;
+            /**
+             * Planning Revision
+             * @description 生成时所处的 planning revision；与当前值不一致即为 stale
+             */
+            planning_revision: number;
+            /** Profile Id */
+            profile_id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /** Routes */
+            routes: components["schemas"]["RouteResponse"][];
+            status: components["schemas"]["RouteSetStatus"];
+        };
+        /**
+         * RouteSetStatus
+         * @description 路线集合状态。新集合不覆盖旧集合；输入 revision 变化使晚返回结果 stale（11 号第 3、6 节）。
+         * @enum {string}
+         */
+        RouteSetStatus: "current" | "superseded" | "stale" | "failed";
+        /**
+         * RouteStatus
+         * @description 单条路线状态。微调创建 based_on_route_id 指向原路线的新变体（11 号第 6 节）。
+         * @enum {string}
+         */
+        RouteStatus: "current" | "superseded";
+        /** RouteVariantRequest */
+        RouteVariantRequest: {
+            /**
+             * Adjustment
+             * @description 结构化微调；与 natural_language 二选一
+             */
+            adjustment?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Natural Language
+             * @description 自然语言微调要求
+             */
+            natural_language?: string | null;
+            /** Route Id */
+            route_id: string;
+        };
+        /** SelectRouteRequest */
+        SelectRouteRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /** Route Id */
+            route_id: string;
+        };
         /** SessionInfo */
         SessionInfo: {
             /**
@@ -515,11 +1669,79 @@ export interface components {
             expires_at: string;
         };
         /**
+         * TaskExecutionStatus
+         * @description 任务执行状态（03 第 3 节）。
+         *
+         *     blocked 是排期计算得到的展示态，不落库；paused 目标下的任务不改写执行状态（D12）。
+         * @enum {string}
+         */
+        TaskExecutionStatus: "proposed" | "pending" | "in_progress" | "completed" | "cancelled";
+        /**
+         * TaskExecutor
+         * @description 任务的执行者类型（12 号第 4 节：用户任务、Agent 任务和协作任务分别计算用户投入）。
+         * @enum {string}
+         */
+        TaskExecutor: "user" | "agent" | "collaborative";
+        /** UndoClosureRequest */
+        UndoClosureRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /** UpdateDraftTaskRequest */
+        UpdateDraftTaskRequest: {
+            /** Expected Minutes */
+            expected_minutes?: number | null;
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /** Instructions */
+            instructions?: string | null;
+            /** Maximum Minutes */
+            maximum_minutes?: number | null;
+            /** Minimum Minutes */
+            minimum_minutes?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** UpdateProfileDraftRequest */
+        UpdateProfileDraftRequest: {
+            /**
+             * Edits
+             * @description 用户对草稿的直接编辑；基于旧档案的模型预览将标记 stale（05 第 2 节）
+             */
+            edits: {
+                [key: string]: unknown;
+            };
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /**
          * UserRole
          * @description 账号角色。首位注册者不自动成为管理员，只能由部署者本地命令授予。
          * @enum {string}
          */
         UserRole: "user" | "admin";
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -870,6 +2092,1509 @@ export interface operations {
             };
             /** @description 未登录、会话失效或凭证错误 */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_goal_api_goals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_goal_api_goals__goal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    activate_plan_api_goals__goal_id__activation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivatePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivationResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    close_goal_api_goals__goal_id__closure_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    undo_closure_api_goals__goal_id__closure_undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoClosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    derive_goal_api_goals__goal_id__derivation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeriveGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    pause_goal_api_goals__goal_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalTransitionResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_plan_change_api_goals__goal_id__plan_change_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE） */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_plan_draft_api_goals__goal_id__plan_drafts_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDraftResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_draft_task_api_goals__goal_id__plan_drafts_current_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+                /** @description 任务 ID */
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDraftTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftTaskResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    generate_plan_api_goals__goal_id__plan_generations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE） */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_profile_api_goals__goal_id__profile_confirmations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_profile_draft_api_goals__goal_id__profile_draft_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileDraftResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_profile_draft_api_goals__goal_id__profile_draft_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileDraftResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resume_goal_api_goals__goal_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalTransitionResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    generate_routes_api_goals__goal_id__route_generations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateRoutesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE） */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    select_route_api_goals__goal_id__route_selection_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectRouteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteSelectionResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_current_routes_api_goals__goal_id__route_sets_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteSetResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revise_route_api_goals__goal_id__route_variants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteVariantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE） */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

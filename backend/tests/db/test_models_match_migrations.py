@@ -17,6 +17,7 @@ from alembic.runtime.migration import MigrationContext
 from sqlalchemy import CheckConstraint, inspect
 
 import goalflow.auth.models  # 注册账号表（F401 只报在同一包名的最后一条 import 上）
+import goalflow.goals.models
 import goalflow.idempotency.models  # 注册幂等表
 import goalflow.jobs.models  # noqa: F401  注册作业表
 from goalflow.db.base import Base
