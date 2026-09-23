@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 进行中：PR-1（幂等存储）已合并（#11）；PR-2（作业核心）评审中；PR-3 未开始 |
+| 状态 | 进行中：PR-1（幂等存储）已合并（#11）；PR-2（作业核心）评审中（#12）；PR-3 未开始 |
 | 更新日期 | 2026-09-23 |
-| 相关 PR | #11（PR-1 幂等存储，已合并）；PR-2 作业核心（待填），均带 `contract-change` 标签 |
+| 相关 PR | #11（PR-1 幂等存储，已合并）；#12（PR-2 作业核心），均带 `contract-change` 标签 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -234,7 +234,7 @@ PR-2 的变异检查：
 - 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 16 条用例，03 第 6 节 idempotency_requests 行已回写。
 - 已完成：PR-2 作业核心：迁移 0003、`contracts/enums.py` 的 `JobStatus`、`JobEventType`、`goalflow/jobs/`（提交、领取、续租、提交协议、重试、取消、恢复扫描、outbox 分发、Celery 与 Beat 装配）、`tests/jobs/` 44 条用例；03 第 6 节三行与 04 第 1、7 节已回写。分支 `feat/T07-job-core`，基于 PR-1。
 - 已合并：PR-1（#11）。
-- 进行中：PR-2 评审中。
+- 进行中：PR-2 评审中（#12）。
 - 未开始：PR-3 作业接口（inspect / watch SSE / cancel 路由与 OpenAPI 生成）。
 
 ## 7. 验证结果
