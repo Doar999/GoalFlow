@@ -6,6 +6,7 @@
 from enum import StrEnum
 from functools import lru_cache
 from typing import Final, Self
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,7 +46,30 @@ class Settings(BaseSettings):
     session_secret: SecretStr | None = None
     credential_encryption_key: SecretStr | None = None
     allow_registration: bool = True
+    # 浏览器访问本应用的源，形如 https://goalflow.example.com，不带路径与末尾斜杠。
+    # 写请求的 Origin 必须与它逐字相等（CSRF 防护，T03 决策 C7）。
+    # 非生产环境留空表示不做 Origin 校验；生产环境必填且必须是 https。
+    public_origin: str = ""
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def _check_public_origin(self) -> Self:
+        if self.public_origin:
+            parsed = urlsplit(self.public_origin)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    "GOALFLOW_PUBLIC_ORIGIN 必须形如 https://example.com 或 http://localhost:5173，不带路径与末尾斜杠"
+                )
+        if self.env is Environment.PRODUCTION and not self.public_origin.startswith("https://"):
+            # 生产 Cookie 带 Secure 与 __Host- 前缀，只在 https 下生效；缺了这一项等于关掉 CSRF 防护。
+            raise ValueError("生产环境必须配置 https 的 GOALFLOW_PUBLIC_ORIGIN")
+        return self
 
     @model_validator(mode="after")
     def _check_production_secrets(self) -> Self:

@@ -12,7 +12,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from goalflow.contracts.errors import HTTP_STATUS_BY_ERROR_CODE, RETRYABLE_ERROR_CODES, ErrorCode, GoalflowError
+from goalflow.contracts.errors import (
+    HTTP_STATUS_BY_ERROR_CODE,
+    RETRY_AFTER_DETAIL_KEY,
+    RETRYABLE_ERROR_CODES,
+    ErrorCode,
+    GoalflowError,
+)
 from goalflow.contracts.http import REQUEST_ID_HEADER, ErrorResponse
 from goalflow.core.context import get_request_id, new_request_id
 
@@ -64,13 +70,17 @@ def _build_response(
 
 async def _handle_goalflow_error(request: Request, exc: Exception) -> Response:
     assert isinstance(exc, GoalflowError)
-    return _build_response(
+    response = _build_response(
         request,
         code=exc.code,
         message=exc.message,
         http_status=exc.http_status,
         details=exc.details,
     )
+    retry_after = exc.details.get(RETRY_AFTER_DETAIL_KEY)
+    if exc.code is ErrorCode.RATE_LIMITED and isinstance(retry_after, int):
+        response.headers["Retry-After"] = str(retry_after)
+    return response
 
 
 async def _handle_validation_error(request: Request, exc: Exception) -> Response:

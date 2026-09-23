@@ -20,6 +20,14 @@ class ErrorCode(StrEnum):
     FORBIDDEN = "FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
+
+    # —— 账号（T03 交接卡决策 C11）——
+    # INVALID_CREDENTIALS 与 UNAUTHENTICATED 分开：后者表示"没有有效会话"，前端据此跳转登录页；
+    # 登录失败若复用它会引起误跳转。
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    ACCOUNT_IDENTIFIER_UNAVAILABLE = "ACCOUNT_IDENTIFIER_UNAVAILABLE"
+    REGISTRATION_CLOSED = "REGISTRATION_CLOSED"
 
     # —— 幂等与版本（01-contracts-and-ownership.md 第 5 节）——
     IDEMPOTENCY_KEY_CONFLICT = "IDEMPOTENCY_KEY_CONFLICT"
@@ -39,6 +47,10 @@ HTTP_STATUS_BY_ERROR_CODE: dict[ErrorCode, int] = {
     ErrorCode.FORBIDDEN: 403,
     ErrorCode.NOT_FOUND: 404,
     ErrorCode.INTERNAL_ERROR: 500,
+    ErrorCode.RATE_LIMITED: 429,
+    ErrorCode.INVALID_CREDENTIALS: 401,
+    ErrorCode.ACCOUNT_IDENTIFIER_UNAVAILABLE: 409,
+    ErrorCode.REGISTRATION_CLOSED: 403,
     ErrorCode.IDEMPOTENCY_KEY_CONFLICT: 409,
     ErrorCode.REVISION_CONFLICT: 409,
     ErrorCode.BUDGET_CONFLICT: 409,
@@ -54,8 +66,13 @@ RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
     {
         ErrorCode.INTERNAL_ERROR,
         ErrorCode.MODEL_UNAVAILABLE,
+        # 等到 details.retry_after_seconds 之后原样重试即可。
+        ErrorCode.RATE_LIMITED,
     }
 )
+
+# RATE_LIMITED 的 details 必带此键，全局处理器据此补 Retry-After 响应头。
+RETRY_AFTER_DETAIL_KEY = "retry_after_seconds"
 
 
 class GoalflowError(Exception):

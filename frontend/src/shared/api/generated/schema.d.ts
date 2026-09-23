@@ -4,6 +4,163 @@
  */
 
 export interface paths {
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 登录
+         * @description 账号不存在、密码错误、账号已禁用统一返回 INVALID_CREDENTIALS。已登录时再次登录会撤销旧会话。
+         */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 退出当前会话
+         * @description 未登录或会话已失效时同样返回 204。
+         */
+        post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 退出全部设备
+         * @description 撤销该用户的全部会话，包括当前会话。
+         */
+        post: operations["logout_all_api_auth_logout_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 修改密码
+         * @description 成功后撤销该用户的全部旧会话，并为当前设备换发新会话 Cookie。
+         */
+        post: operations["change_password_api_auth_password_change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password/reset-with-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 凭重置令牌设置新密码
+         * @description 令牌一次性、30 分钟内有效。成功后该用户全部会话失效，需重新登录。
+         */
+        post: operations["reset_password_with_token_api_auth_password_reset_with_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 注册并登录
+         * @description 创建账号并建立会话，会话令牌通过 Cookie 下发。首位注册者不会自动成为管理员。
+         */
+        post: operations["register_api_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 注册是否开放
+         * @description 登录与注册页据此决定是否展示注册入口，与注册接口的行为保持一致。
+         */
+        get: operations["read_registration_status_api_auth_registration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户与会话 */
+        get: operations["read_session_api_auth_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -28,12 +185,50 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountUser */
+        AccountUser: {
+            /**
+             * Account Identifier
+             * @description 规范化后的账号标识
+             */
+            account_identifier: string;
+            /** Id */
+            id: string;
+            role: components["schemas"]["UserRole"];
+            /**
+             * Timezone
+             * @description IANA 时区名
+             */
+            timezone: string;
+        };
+        /**
+         * AuthSessionResponse
+         * @description 当前用户与会话元数据。不包含会话令牌。
+         */
+        AuthSessionResponse: {
+            session: components["schemas"]["SessionInfo"];
+            user: components["schemas"]["AccountUser"];
+        };
+        /** ChangePasswordRequest */
+        ChangePasswordRequest: {
+            /**
+             * Current Password
+             * Format: password
+             */
+            current_password: string;
+            /**
+             * New Password
+             * Format: password
+             * @description 12–128 个字符，不得与账号标识相同
+             */
+            new_password: string;
+        };
         /**
          * ErrorCode
          * @description 对外错误码。
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE";
+        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_IDENTIFIER_UNAVAILABLE" | "REGISTRATION_CLOSED" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE";
         /**
          * ErrorResponse
          * @description 所有 API 错误的唯一响应体。各模块不得自定义错误体。
@@ -80,6 +275,78 @@ export interface components {
              */
             status: "ok";
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Account Identifier */
+            account_identifier: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+        };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /**
+             * Account Identifier
+             * @description 账号标识，可以是用户名或邮箱格式（首版不验证邮箱）。规范化后需为 3–254 个字符，不含空白
+             */
+            account_identifier: string;
+            /**
+             * Password
+             * Format: password
+             * @description 12–128 个字符，不得与账号标识相同
+             */
+            password: string;
+            /**
+             * Timezone
+             * @description IANA 时区名，例如 Asia/Shanghai。省略时为 UTC
+             */
+            timezone?: string | null;
+        };
+        /** RegistrationStatusResponse */
+        RegistrationStatusResponse: {
+            /**
+             * Registration Open
+             * @description 本实例是否接受新用户注册。关闭后已有用户仍可登录
+             */
+            registration_open: boolean;
+        };
+        /** ResetPasswordRequest */
+        ResetPasswordRequest: {
+            /**
+             * New Password
+             * Format: password
+             * @description 12–128 个字符，不得与账号标识相同
+             */
+            new_password: string;
+            /**
+             * Token
+             * Format: password
+             * @description 部署者用本地命令签发的一次性重置令牌
+             */
+            token: string;
+        };
+        /** SessionInfo */
+        SessionInfo: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description 绝对过期时间。7 天无活动会更早失效
+             */
+            expires_at: string;
+        };
+        /**
+         * UserRole
+         * @description 账号角色。首位注册者不自动成为管理员，只能由部署者本地命令授予。
+         * @enum {string}
+         */
+        UserRole: "user" | "admin";
     };
     responses: never;
     parameters: never;
@@ -89,6 +356,356 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description 未登录、会话失效或凭证错误 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 尝试次数过多，响应头 Retry-After 给出需等待的秒数 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    logout_all_api_auth_logout_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未登录、会话失效或凭证错误 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_password_change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description 未登录、会话失效或凭证错误 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 尝试次数过多，响应头 Retry-After 给出需等待的秒数 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reset_password_with_token_api_auth_password_reset_with_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未登录、会话失效或凭证错误 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 尝试次数过多，响应头 Retry-After 给出需等待的秒数 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或本实例已关闭注册 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 账号标识不可用 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 尝试次数过多，响应头 Retry-After 给出需等待的秒数 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_registration_status_api_auth_registration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationStatusResponse"];
+                };
+            };
+        };
+    };
+    read_session_api_auth_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description 未登录、会话失效或凭证错误 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     read_health_api_health_get: {
         parameters: {
             query?: never;
