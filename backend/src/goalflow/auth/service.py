@@ -147,16 +147,6 @@ def _rowcount(result: Result[Any]) -> int:
     return cast("CursorResult[Any]", result).rowcount
 
 
-def _detach(session: Session) -> None:
-    """让读事务里取出的实体在事务结束后仍可用。
-
-    `Database.read()` 退出时回滚，而回滚会让会话里所有实体过期（`expire_on_commit=False`
-    只管提交，不管回滚）。过期实体离开会话后再读属性就是 DetachedInstanceError。
-    先 expunge 再回滚，实体就带着已加载的值脱离会话。
-    """
-    session.expunge_all()
-
-
 def _invalid_credentials(message: str = "账号或密码错误") -> GoalflowError:
     return GoalflowError(ErrorCode.INVALID_CREDENTIALS, message)
 
@@ -312,7 +302,6 @@ class AuthService:
                     .join(PasswordCredential, PasswordCredential.user_id == User.id)
                     .where(User.account_identifier == identifier)
                 ).one_or_none()
-                _detach(session)
 
         if found is None:
             credentials.spend_verification_time(password)
@@ -365,7 +354,6 @@ class AuthService:
                 .join(User, User.id == LoginSession.user_id)
                 .where(LoginSession.token_hash == digest)
             ).one_or_none()
-            _detach(session)
         if found is None:
             return None
         login_session, user = found
@@ -449,7 +437,6 @@ class AuthService:
                 .join(User, User.id == PasswordResetToken.user_id)
                 .where(PasswordResetToken.token_hash == digest)
             ).one_or_none()
-            _detach(session)
         if found is None:
             raise invalid
         reset, user = found

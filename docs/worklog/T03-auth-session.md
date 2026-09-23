@@ -56,6 +56,8 @@ backend/src/goalflow/db/types.py                 （新文件：UtcDateTime 列�
 backend/tests/auth/
 backend/tests/db/test_models_match_migrations.py、test_column_types.py
 backend/tests/core/test_config.py                （生产环境配置用例补 public_origin）
+backend/src/goalflow/db/session.py、backend/tests/db/test_session.py  （仅 read() 回滚前 expunge，见 T16 决策 B10）
+docs/worklog/T16-data-layer-foundation.md       （仅新增 B10 与给接手者第 5 条）
 backend/pyproject.toml、backend/uv.lock          （新增 argon2-cffi；显式声明 tzdata）
 docs/worklog/T03-auth-session.md
 docs/worklog/README.md                           （仅索引表）
@@ -64,16 +66,17 @@ docs/worklog/README.md                           （仅索引表）
 ### 明确不可修改
 
 ```text
-backend/src/goalflow/db/engine.py、session.py    （T16 已交付，需要改时回到数据负责人）
+backend/src/goalflow/db/engine.py               （T16 已交付，需要改时回到数据负责人）
 frontend/                                        （生成物与 shared/api/errors.ts 以外）
 scripts/、.github/
 ```
 
-三处起草时没有预见、实现中才加入的路径：
+四处起草时没有预见、实现中才加入的路径：
 
 - `.pre-commit-config.yaml`、`scripts/check-generated-types.sh`：原钩子拒绝一切生成物提交，契约变更无法正常提交。由仓库负责人决定修改钩子，见决策 C23。这两个路径归集成负责人，评审时需其确认。
 
 - `frontend/src/shared/api/errors.ts`：错误码兜底文案是 `Record<ApiErrorCode, string>`，后端新增错误码后前端类型检查必然失败——这是 T02 有意设置的耦合。按 05"错误码变更同时更新前端类型"，只补 4 行文案，不动逻辑。
+- `backend/src/goalflow/db/session.py`：`read()` 回滚会让读出的实体过期，业务模块拿不到可用的实体。由仓库负责人要求在 T16 的入口统一修，而不是在 `auth/` 里绕开；属数据负责人路径，评审时需其确认。
 - `backend/src/goalflow/db/types.py`：事件时间列类型是所有业务表共用的，放 `auth/` 会让后续模块反向依赖账号模块。
 
 ### 不在本次范围内
@@ -219,12 +222,12 @@ $ bash scripts/check.sh
 检查通过
 
 $ bash scripts/test.sh
-后端：189 passed, 1 warning in 15.80s
+后端：191 passed, 1 warning in 14.53s
 前端：Test Files  3 passed (3) / Tests  16 passed (16)
 测试通过
 ```
 
-后端 189 条 = 既有的 111 条 + 本工作包新增 78 条。唯一的 warning 是 starlette testclient 对 anyio 别名的弃用提示，改动前已存在，与本工作包无关。
+后端 191 条 = 既有的 111 条 + 本工作包新增 80 条（其中 2 条在 tests/db/test_session.py，守 T16 决策 B10）。唯一的 warning 是 starlette testclient 对 anyio 别名的弃用提示，改动前已存在，与本工作包无关。
 
 ## 8. 未决问题
 
@@ -236,7 +239,6 @@ $ bash scripts/test.sh
 | `idempotency_requests.owner_id` 与注册这类无主请求的关系 | C12 在 T03 里绕开了，但 01 第 5 节的规则需要写明例外 | 集成负责人 |
 | [T02 交接卡](T02-engineering-foundation.md) 头部状态仍是"评审中"，索引表写的是"已完成" | 文档不一致，不影响行为 | T02 负责人 |
 | 部署者可选开启验证码（08 的安全规则） | 首版不做 | 产品决策人 |
-| `Database.read()` 退出时回滚，回滚会让会话里的全部 ORM 实体过期（`expire_on_commit=False` 管不到回滚），读事务取出的实体出了 `with` 块再读属性就是 `DetachedInstanceError` | 每个在 `read()` 里取实体的模块都会踩到。本卡在 `auth/service.py` 用 `_detach()`（先 `expunge_all()` 再退出）绕开，没有改 `db/session.py` | 数据负责人：是否让 `read()` 在回滚前统一 expunge |
 | Argon2 参数在目标部署机型上的耗时基准（C8） | 参数取的是 OWASP 最低推荐；小内存机器上并发登录的峰值内存需要实测 | 集成负责人，在 T13 部署时做 |
 
 ## 9. 给接手者
@@ -245,7 +247,7 @@ $ bash scripts/test.sh
 2. **`last_seen_at` 不能每个请求都写。** 每个带登录态的请求都会校验会话，如果每次都更新，所有读请求都会变成写请求，WAL 模式"读不阻塞写"的好处就没了。见 C4 的节流规则。
 3. **账号不存在时也要做一次假校验。** 用一个固定的假哈希调用一次 verify，否则响应时间会泄露账号是否存在。
 4. **脱敏靠测试守住，不靠自觉。** 第 5 节的脱敏用例要真正扫描库文件、日志和响应体，不能只断言某个字段不在响应模型里。
-5. **读事务里取出的 ORM 实体要先 detach 再用。** 见第 8 节。`auth/service.py` 里的 `_detach()` 就是为此存在的，删掉它，14 条服务层用例会同时报 `DetachedInstanceError`。
+5. **读事务取出的实体在 `with` 块外只能读已加载的列。** `Database.read()` 退出前会 expunge（T16 决策 B10），实体可以带出事务使用；但改动不会被提交，要改请在 `write()` 里重新取。
 6. **后续业务模块取当前用户一律用 `api.dependencies.CurrentUserDep`。** 它同时做了会话校验和写请求的来源校验（C22）；自己读 Cookie 等于绕过 CSRF 防护。
 7. **新模块加 ORM 模型时**，继承 `goalflow.db.base.Base`，事件时间用 `goalflow.db.types.UtcDateTime`，迁移手写且约束名与命名约定一致，并在 `tests/db/test_models_match_migrations.py` 补一行 import。
 8. **`tests/auth/auth_support.py` 不要并进 conftest。** 测试目录没有 `__init__.py`，测试模块 import 不到 conftest；而 `tests/db_compat/` 下还有另一个 conftest.py。
