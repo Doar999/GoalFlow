@@ -100,7 +100,7 @@ goal_profile_drafts 是可修改的交互状态，goal_profiles 是用户确认�
 | job_events | id, owner_id, job_id, sequence, event_type, payload_json | (job_id, sequence) 唯一；SSE 补读持久化阶段事件 |
 | outbox_events | id, owner_id, job_id, event_type, status, next_attempt_at, attempts | 与业务作业同事务写入；重复投递由 jobs 去重 |
 | model_calls | id, owner_id, job_id, provider, model, prompt_version, input_tokens, output_tokens, estimated_cost, status, latency_ms | 用量统计；缺失用量不记作零；不记录密钥 |
-| idempotency_requests | id, owner_id, operation, request_key, request_hash, result_ref | 同 key 不同请求体返回冲突；相同请求返回原结果 |
+| idempotency_requests | id, owner_id, operation, request_key, request_hash, result_type, result_id, response_status, created_at | (owner_id, request_key) 唯一，operation 不在唯一约束内：同 key 换操作或换请求体都返回冲突；相同请求按结果引用返回资源当前状态与原状态码。只记录 2xx；与业务写入同一写事务，失败回滚不留记录；保留 7 天。见 [T07 交接卡](../worklog/T07-job-execution.md) E4—E8、E25 |
 | audit_events | id, owner_id, actor_kind, action, entity_type, entity_id, before_revision, after_revision, reason, request_id | 追踪自动调整、用户确认、关联变更及管理操作 |
 
 索引优先覆盖 owner_id + status、owner_id + local_date、goal_id + version_no、conversation_id + 顺序、job_id + sequence，以及待分发状态 + next_attempt_at。SQLite 没有 MySQL 那种单列索引字节上限，列宽不构成建索引的约束；外部输入长度仍需在应用层限制。
