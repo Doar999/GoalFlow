@@ -32,16 +32,15 @@ repos:
 
   - repo: local
     hooks:
-      # 生成物必须由 scripts/api-generate.sh 产生。手工编辑会在下次生成时被覆盖，
-      # 并且会让 openapi/goalflow.yaml 与实际接口脱节。
-      - id: no-manual-edit-generated
-        name: 禁止手工编辑生成物
-        entry: >-
-          bash -c 'echo "错误：这些文件是生成物，请改后端定义后执行 bash scripts/api-generate.sh：";
-          printf "  %s\n" "$@";
-          echo "见 docs/engineering/01-contracts-and-ownership.md 第 2 节。"; exit 1' --
+      # 生成物必须由 scripts/api-generate.sh 产生。这里按当前契约重新生成一份并逐字比对：
+      # 手工编辑、或改了契约却没重新生成都会被拦下，正常重新生成的结果则放行。
+      # 改契约时 openapi/goalflow.yaml 也会触发本钩子，确保两者一起提交。
+      - id: generated-types-match-contract
+        name: 生成物与契约一致
+        entry: bash scripts/check-generated-types.sh
         language: system
-        files: ^frontend/src/shared/api/generated/
+        files: ^(frontend/src/shared/api/generated/|openapi/goalflow\.yaml$)
+        pass_filenames: false
 
 # 关于迁移：
 # "已合并的迁移不可修改" 这条规则需要对比 base 分支才能区分"修改已有迁移"和"新增迁移"，
