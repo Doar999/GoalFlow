@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 进行中：PR-1（幂等存储）已合并（#11）；PR-2（作业核心）评审中（#12）；PR-3 未开始 |
+| 状态 | 进行中：PR-1 已合并（#11）；PR-2 作业核心评审中（#12）；PR-3 作业接口已完成实现、全绿，待 #12 合并后提 PR |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #11（PR-1 幂等存储，已合并）；#12（PR-2 作业核心），均带 `contract-change` 标签 |
 
@@ -33,7 +33,7 @@
 backend/migrations/versions/0002_T07_create_idempotency_requests.py   （PR-1）
 backend/migrations/versions/0003_T07_create_job_tables.py             （PR-2：jobs、job_events、outbox_events）
 backend/src/goalflow/contracts/enums.py          （PR-2：新增 JobStatus、JobEventType）
-backend/src/goalflow/api/dependencies.py         （PR-1：仅 require_idempotency_key 的 docstring，见 E26）
+backend/src/goalflow/api/dependencies.py         （PR-1：仅 require_idempotency_key 的 docstring，见 E26；PR-3：新增 DatabaseDep）
 backend/src/goalflow/api/routes/jobs.py          （PR-3：inspect_job、watch_job、cancel_job）
 backend/src/goalflow/api/app.py                  （PR-3：仅挂载 jobs 路由）
 openapi/goalflow.yaml、frontend/src/shared/api/generated/  （PR-3：只经 api-generate.sh 生成）
@@ -133,7 +133,7 @@ scripts/、.github/
 
 ### 实现中补充的决策
 
-E25—E28 在单个工作包内部，按决策规程由实现者自定。E25、E26、E28 随 PR-1 评审，E27 随 PR-2 评审。
+E25—E31 在单个工作包内部，按决策规程由实现者自定。E25、E26、E28 随 PR-1 评审，E27 随 PR-2 评审，E29—E31 随 PR-3 评审。
 
 | 编号 | 决策 | 依据 | 影响范围 | 是否需要 RFC |
 | --- | --- | --- | --- | --- |
@@ -141,6 +141,10 @@ E25—E28 在单个工作包内部，按决策规程由实现者自定。E25、E
 | E26 | E6 的"路由用依赖打包 `IdempotentRequest`"改为：路由调用 `IdempotentRequest.build(owner_id=..., operation=..., key=..., body=..., path_params=...)`。key 仍由既有的 `require_idempotency_key` 依赖取得 | 摘要要基于**校验后的**请求模型（E5），而 FastAPI 依赖拿不到路由参数里已校验的请求体；硬做成依赖就得重复解析请求体。结果是 `api/` 在 PR-1 只改了一处 docstring，OpenAPI 不变 | 后续全部写路由的写法，样板见 `tests/idempotency/test_idempotency_http.py` | 否 |
 | E27 | 新增开发依赖 `celery-types`（第三方类型存根） | Celery 本身不带类型信息，mypy 严格模式下 `import celery` 报 import-untyped，`@app.task` 让任务函数失去类型。另一个方案是在 pyproject 里对 celery 关掉检查，但那等于放弃对任务签名的类型检查 | 仅开发依赖，不进运行时 | 否 |
 | E28 | `idempotency/models.py` 顶部 `import goalflow.auth.models`，**只为**把外键目标 users 表登记进同一份 MetaData，不读写账号表。`jobs/models.py` 同样处理。后续凡是外键指向别的模块表的模型，照此处理 | 外键 `ForeignKey("users.id")` 在 flush 时要从 MetaData 里解析目标表。测试进程里账号模块总是先被 import，所以测不出来；只 import 本模块的进程（Celery Worker）第一次写入就会 `NoReferencedTableError`。这是 PR-2 的"杀掉 Worker 进程"用例在子进程里暴露的。01 第 8 节禁止 import 他模块内部文件去**读写**它的表，这里不读写，只登记元数据；替代方案是在每个进程入口集中 import 全部模型，但任何漏掉入口的脚本都会重新踩坑 | 所有外键跨模块的模型 | 否 |
+
+| E29 | 取消接口要求 `Idempotency-Key`：`cancel_job` 增加 `idempotency` 参数，在自己的写事务里走 `run_idempotent`；重放返回作业当前状态 | 01 第 5 节"写操作携带 Idempotency-Key"已确认，唯一例外是账号接口。取消本身对终态幂等，但同 key 换内容（例如换了 expected_revision）仍应报冲突 | 契约（PR-3） | 否 |
+| E30 | SSE 格式：`id` 为 sequence，`event` 为事件类型，`data` 为 `JobEventMessage` 的 JSON；心跳是注释行 `: keep-alive`；响应头带 `Cache-Control: no-cache` 与 `X-Accel-Buffering: no`。流在"作业已是终态且事件已发完"时结束，判断依据是同一读事务里取到的作业状态，不看事件类型 | 事件与状态同事务写入（E19），状态判断同时覆盖"本批含终态事件"和"带着终态之后的 Last-Event-ID 重连"两种情形；按事件类型再判断一次是冗余分支，变异检查证实去掉它没有测试会红，已删除。OpenAPI 里 200 响应的 schema 描述的是每条消息的 data | 契约、前端 | 否 |
+| E31 | `JobResponse` 不含 owner_id、input_refs、input_revision；`error_code` 类型为 `ErrorCode` | 前端只需要展示与恢复所需的字段；输入快照属于提交方的业务数据，由各业务接口自己决定是否暴露 | 契约 | 否 |
 
 ### 事件与接口（PR-2、PR-3）
 
@@ -223,11 +227,25 @@ PR-2 的变异检查：
 
 接口（PR-3）：
 
-- [ ] 异步提交返回 202 与 `job_id`；重复提交返回原 `job_id`
-- [ ] SSE 按 `Last-Event-ID` 补读漏掉的事件；终态后流关闭；断开连接后作业照常完成，事后查询得到最终状态
-- [ ] 已成功的作业再取消，返回当前状态且结果保留；`expected_revision` 过期返回 `REVISION_CONFLICT`
-- [ ] 数据隔离：用户 B 查询、订阅、取消用户 A 的作业，均返回 `NOT_FOUND`，响应不含 A 的任何数据
-- [ ] 错误详情与日志中不出现 Cookie、令牌或模型凭证
+测试文件为 `backend/tests/jobs/test_job_api.py`，共 11 条，经真实 HTTP（TestClient）与注册登录得到的会话 Cookie 调用。
+
+- [ ] 异步提交返回 202 与 `job_id`；重复提交返回原 `job_id` —— **挪到第一个提交作业的业务接口（T08 起）**：T07 不含任何提交作业的 HTTP 接口。Interface 层的去重已由 `test_job_submission.py` 覆盖，HTTP 层的写法样板见 `jobs/service.py` 模块 docstring
+- [x] SSE 按 `Last-Event-ID` 补读漏掉的事件；终态后流立即关闭（不等到时长上限）；跟随运行中的作业直到结束；空闲时发心跳、到时长上限关闭且不影响作业 —— `test_event_stream_replays_a_finished_job_and_closes`、`test_event_stream_resumes_after_last_event_id`、`test_event_stream_follows_a_running_job_until_it_finishes`、`test_idle_stream_sends_heartbeats_and_ends_without_cancelling_the_job`
+- [x] 已成功的作业再取消，返回当前状态且结果保留；`expected_revision` 过期返回 `REVISION_CONFLICT`；取消要求 `Idempotency-Key`，同 key 重放返回同一结果、换内容返回 `IDEMPOTENCY_KEY_CONFLICT` —— `test_cancelling_a_succeeded_job_returns_it_unchanged`、`test_cancel_with_an_outdated_revision_conflicts`、`test_cancel_requires_an_idempotency_key`、`test_cancel_is_idempotent_per_key`
+- [x] 数据隔离：用户 B 查询、订阅、取消用户 A 的作业，均返回 `NOT_FOUND`，响应体（除 request_id）与查询不存在的作业逐字相同，且 A 的作业不受影响；未登录一律 401 —— `test_other_users_jobs_look_exactly_like_missing_ones`、`test_job_endpoints_require_a_session`
+- [x] 响应不含 owner_id 与输入快照 —— `test_inspect_returns_the_current_state`
+- [x] 错误详情与日志中不出现 Cookie、令牌或模型凭证 —— 作业接口的错误全部经 T03 的统一错误处理器输出，details 只含 `current_revision`；作业记录不写异常原文由 PR-2 的 `test_unexpected_errors_fail_without_leaking_the_exception_text` 覆盖。本工作包未新增日志字段之外的输出
+
+PR-3 的变异检查：
+
+| 临时改动 | 变红的测试 |
+| --- | --- |
+| 取消接口不走幂等 | `test_cancel_is_idempotent_per_key` |
+| 事件流不先确认归属 | `test_other_users_jobs_look_exactly_like_missing_ones` |
+| 事件流忽略 Last-Event-ID | `test_event_stream_resumes_after_last_event_id` |
+| 查询不按 owner 过滤 | `test_other_users_jobs_look_exactly_like_missing_ones` |
+| 流在作业结束后不关闭（空等到时长上限） | 事件流相关 3 条（为此补了"关闭用时小于时长上限一半"的断言：原先内容一样、只是慢，没有测试会红） |
+| 按事件类型判断终态的分支 | **无**。与按作业状态判断等价，是死分支，已删除（E30） |
 
 ## 6. 进展
 
@@ -235,7 +253,8 @@ PR-2 的变异检查：
 - 已完成：PR-2 作业核心：迁移 0003、`contracts/enums.py` 的 `JobStatus`、`JobEventType`、`goalflow/jobs/`（提交、领取、续租、提交协议、重试、取消、恢复扫描、outbox 分发、Celery 与 Beat 装配）、`tests/jobs/` 44 条用例；03 第 6 节三行与 04 第 1、7 节已回写。分支 `feat/T07-job-core`，基于 PR-1。
 - 已合并：PR-1（#11）。
 - 进行中：PR-2 评审中（#12）。
-- 未开始：PR-3 作业接口（inspect / watch SSE / cancel 路由与 OpenAPI 生成）。
+- 已完成：PR-3 作业接口：`api/routes/jobs.py`（inspect、watch SSE、cancel）、`jobs/stream.py`、`cancel_job` 接入幂等、`DatabaseDep`、OpenAPI 与前端类型重新生成；`test_job_api.py` 11 条。分支 `feat/T07-job-api`，基于 PR-2。
+- 未开始：PR-3 提 PR（等 #12 合并）。
 
 ## 7. 验证结果
 
@@ -293,6 +312,30 @@ $ uv run --project backend pytest backend/tests/jobs -o addopts=""
 
 `JobStatus`、`JobEventType` 进了 `contracts/`，但还没有路由用到，所以 OpenAPI 不变；PR-3 的接口会把它们带进生成物。
 
+PR-3，于 2026-09-23 在同一环境执行（分支 `feat/T07-job-api`，基于 PR-2）：
+
+```text
+$ bash scripts/api-generate.sh
+完成                      （openapi/goalflow.yaml 与 frontend/src/shared/api/generated/schema.d.ts 已更新）
+
+$ bash scripts/check.sh
+All checks passed!
+Success: no issues found in 43 source files
+==> 契约漂移检查
+    契约一致
+==> 凭证粗筛
+    未发现疑似凭证
+检查通过
+
+$ bash scripts/test.sh
+==> 后端测试（all）
+262 passed, 1 warning in 30.73s
+==> 前端测试（all）
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+测试通过
+```
+
 ## 8. 未决问题
 
 | 问题 | 影响 | 需要谁决策 |
@@ -317,4 +360,7 @@ $ uv run --project backend pytest backend/tests/jobs -o addopts=""
 10. **Celery 任务必须 `shared=False`。** Celery 默认把 `@app.task` 登记到进程里所有的 app 上，同名任务互相覆盖；测试里构造的内存实例曾因此跑到模块级 `celery_app` 绑定的库上去。
 11. **外键指向别的模块表的模型，要在模型文件里 import 那个模块的 models**（E28）。只 import 本模块的进程（Worker）解析不到外键目标表，普通测试测不出来——测试进程里账号模块总被先 import。`test_job_recovery.py` 的"杀掉 Worker 进程"用例和 `test_idempotency_isolated_process.py` 都在子进程里跑，专门盯这条。
 12. **测试里要关掉续租线程**（`run(..., heartbeat_interval=None)` 是 `jobs_support.run` 的默认值）才能用假时钟精确控制租约何时过期；续租线程会把 `lease_until` 推到 `clock() + 60s`，和推进时钟的测试互相抢。
-13. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
+13. **SSE 路由必须在返回流之前确认归属**（`watch_job` 先调 `get_job`）。生成器第一次被迭代时响应头已经发出，那时再抛 `NOT_FOUND` 只会变成一条断掉的 200 流。
+14. **浏览器的 EventSource 不能在首次连接时带自定义头**，所以首次总是从 sequence 0 开始补读；断线重连时它会自动带上 `Last-Event-ID`。前端（T10）不需要自己管理游标。
+15. **提交作业的业务接口返回 202 与作业引用的写法**：在 `run_idempotent` 的 `execute` 里调 `submit_job`，返回 `(ResultRef("job", job_id), 202)`；事务提交后再 `dispatch_outbox(..., job_ids=[job_id])`。样板在 `jobs/service.py` 的模块 docstring。
+16. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
