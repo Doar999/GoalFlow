@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 进行中：PR-1（幂等存储）评审中（PR #11），`check.sh`、`test.sh` 全绿 |
+| 状态 | 进行中：PR-1（幂等存储）评审中（PR #11）；PR-2（作业核心）已完成实现、全绿，待 PR-1 合并后提 PR（迁移串行，见第 8 节） |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #11（PR-1 幂等存储，带 `contract-change` 标签） |
 
@@ -133,13 +133,14 @@ scripts/、.github/
 
 ### 实现中补充的决策
 
-E25、E26、E28 在单个工作包内部，按决策规程由实现者自定，随 PR-1 评审。
+E25—E28 在单个工作包内部，按决策规程由实现者自定。E25、E26、E28 随 PR-1 评审，E27 随 PR-2 评审。
 
 | 编号 | 决策 | 依据 | 影响范围 | 是否需要 RFC |
 | --- | --- | --- | --- | --- |
 | E25 | E7 的 `result_ref` 落成两列 `result_type`（≤32）、`result_id`（≤36），不存 JSON | 03 第 1 节："核心关联、日期、状态保持独立字段"，JSON 只用于领域扩展与快照。结果引用是核心关联。另一个原因：SQLite 里声明类型为 `JSON` 的列是 NUMERIC 亲和性，要么另写一个 JSON 列类型放进 T16 的 `db/types.py`，要么存成裸 TEXT，两者都不如两列清楚 | 数据模型（已回写 03） | 否 |
 | E26 | E6 的"路由用依赖打包 `IdempotentRequest`"改为：路由调用 `IdempotentRequest.build(owner_id=..., operation=..., key=..., body=..., path_params=...)`。key 仍由既有的 `require_idempotency_key` 依赖取得 | 摘要要基于**校验后的**请求模型（E5），而 FastAPI 依赖拿不到路由参数里已校验的请求体；硬做成依赖就得重复解析请求体。结果是 `api/` 在 PR-1 只改了一处 docstring，OpenAPI 不变 | 后续全部写路由的写法，样板见 `tests/idempotency/test_idempotency_http.py` | 否 |
-| E28 | `idempotency/models.py` 顶部 `import goalflow.auth.models`，**只为**把外键目标 users 表登记进同一份 MetaData，不读写账号表。后续凡是外键指向别的模块表的模型，照此处理 | 外键 `ForeignKey("users.id")` 在 flush 时要从 MetaData 里解析目标表。测试进程里账号模块总是先被 import，所以测不出来；只 import 本模块的进程（Celery Worker）第一次写入就会 `NoReferencedTableError`。这是 PR-2 的"杀掉 Worker 进程"用例在子进程里暴露的。01 第 8 节禁止 import 他模块内部文件去**读写**它的表，这里不读写，只登记元数据；替代方案是在每个进程入口集中 import 全部模型，但任何漏掉入口的脚本都会重新踩坑 | 所有外键跨模块的模型 | 否 |
+| E27 | 新增开发依赖 `celery-types`（第三方类型存根） | Celery 本身不带类型信息，mypy 严格模式下 `import celery` 报 import-untyped，`@app.task` 让任务函数失去类型。另一个方案是在 pyproject 里对 celery 关掉检查，但那等于放弃对任务签名的类型检查 | 仅开发依赖，不进运行时 | 否 |
+| E28 | `idempotency/models.py` 顶部 `import goalflow.auth.models`，**只为**把外键目标 users 表登记进同一份 MetaData，不读写账号表。`jobs/models.py` 同样处理。后续凡是外键指向别的模块表的模型，照此处理 | 外键 `ForeignKey("users.id")` 在 flush 时要从 MetaData 里解析目标表。测试进程里账号模块总是先被 import，所以测不出来；只 import 本模块的进程（Celery Worker）第一次写入就会 `NoReferencedTableError`。这是 PR-2 的"杀掉 Worker 进程"用例在子进程里暴露的。01 第 8 节禁止 import 他模块内部文件去**读写**它的表，这里不读写，只登记元数据；替代方案是在每个进程入口集中 import 全部模型，但任何漏掉入口的脚本都会重新踩坑 | 所有外键跨模块的模型 | 否 |
 
 ### 事件与接口（PR-2、PR-3）
 
@@ -188,18 +189,37 @@ E25、E26、E28 在单个工作包内部，按决策规程由实现者自定，�
 
 作业（PR-2）：
 
-- [ ] 提交在同一事务内写入作业、outbox 和 `queued` 事件；事务回滚时三者都不存在
-- [ ] 相同 `dedupe_key` 并发提交 8 次，只产生一个作业；failed、cancelled、stale 之后再提交会产生新作业
-- [ ] outbox 投递失败后由扫描补投；同一作业投递两次，只有一次领取成功
-- [ ] 两个 Worker 同时领取同一作业，只有一个成功
-- [ ] 旧 Worker 租约过期、新尝试开始之后，旧 Worker 晚返回，其提交影响 0 行，最终结果由新尝试决定，业务结果只有一份
-- [ ] Worker 进程在运行中被杀：租约过期后被扫描回收并重试，最终只发布一个结果
-- [ ] 可重试错误进入 `retry_wait`，按退避时间重试；3 次用尽转 `failed` 并保留 `error_code`；不可重试错误直接 `failed`
-- [ ] 取消与成功提交并发竞争，两者只有一个生效；取消生效后不发布业务结果
-- [ ] 提交时输入版本已变：作业转 `stale`，不写业务结果
-- [ ] 恢复扫描并发执行两次，状态推进不重复
-- [ ] 同一作业的事件 `sequence` 连续且唯一；每个状态变化都有对应事件
-- [ ] 迁移 0002、0003 升级 → 降级 → 再升级结果一致；ORM 元数据与迁移后的反射结果一致（含部分唯一索引与 CHECK）
+测试文件在 `backend/tests/jobs/`，共 44 条。"业务结果提交了几次"一律看测试专用表 `job_results` 的行数。
+
+- [x] 提交在同一事务内写入作业、outbox 和 `queued` 事件；事务回滚时三者都不存在 —— `test_job_submission.py::test_submission_writes_job_outbox_and_queued_event_together`、`test_rolled_back_business_transaction_leaves_no_job`
+- [x] 相同 `dedupe_key` 并发提交 8 次，只产生一个作业；failed、cancelled、stale 之后再提交会产生新作业；succeeded 之后仍返回原作业；部分唯一索引在绕过查询时兜底 —— `test_concurrent_submissions_of_one_input_create_one_job`、`test_a_finished_unsuccessful_job_frees_its_dedupe_key`（3 组参数）、`test_a_succeeded_job_keeps_its_dedupe_key`、`test_the_partial_unique_index_backs_up_the_dedupe_check`
+- [x] outbox 投递失败后退避重投且不向调用方抛错；消息在队列里丢了由恢复扫描补发；同一作业投递两次，只有一次领取成功 —— `test_job_dispatch.py::test_failed_publish_backs_off_and_never_raises`、`test_job_recovery.py::test_a_queued_job_whose_message_was_lost_is_redispatched`、`test_job_execution.py::test_duplicate_delivery_is_claimed_only_once`
+- [x] 两个 Worker 同时领取同一作业，只有一个成功 —— `test_two_workers_racing_for_one_job`
+- [x] 旧 Worker 租约过期后晚返回，提交影响 0 行，业务结果只有一份；包括新尝试**仍在运行**时旧 Worker 返回的情形，以及关掉检查点、只靠提交条件的情形 —— `test_old_worker_returning_late_cannot_commit`、`test_old_worker_cannot_commit_while_a_newer_attempt_is_running`、`test_commit_guard_alone_stops_an_old_worker`
+- [x] Worker 进程在运行中被杀（真实子进程，`kill`）：租约过期后被扫描回收并重试，最终只发布一个结果 —— `test_job_recovery.py::test_killed_worker_process_is_recovered_and_the_job_completes_once`
+- [x] 可重试错误进入 `retry_wait`，按 30 秒、120 秒退避重试；3 次用尽转 `failed` 并保留 `error_code`；不可重试错误直接 `failed`；最后一次尝试租约过期也转 `failed` —— `test_retryable_errors_back_off_then_fail_after_three_attempts`、`test_non_retryable_business_error_fails_immediately`、`test_lease_expiry_on_the_last_attempt_fails_the_job`
+- [x] 取消与成功提交并发竞争，两者只有一个生效；取消生效后不发布业务结果；已成功的作业再取消，结果保留 —— `test_cancel_racing_the_commit_has_exactly_one_winner`（15 轮）、`test_cancel_after_the_last_checkpoint_still_blocks_the_commit`、`test_cancel_requested_while_running_is_honoured_at_the_next_checkpoint`、`test_cancelling_a_queued_job_prevents_it_from_running`、`test_cancelling_a_finished_job_keeps_its_result`、`test_cancel_with_an_outdated_revision_conflicts`
+- [x] 提交时输入版本已变：作业转 `stale`，不写业务结果；`commit` 中途失败时业务写入整体回滚 —— `test_stale_input_discovered_at_commit_writes_nothing`、`test_failure_inside_commit_rolls_back_the_business_write`
+- [x] 恢复扫描并发执行两次，状态推进不重复；未过期的租约不被回收 —— `test_concurrent_recovery_scans_do_not_double_advance`、`test_a_live_lease_is_left_alone`
+- [x] 同一作业的事件 `sequence` 连续且唯一；每个状态变化都有对应事件；阶段事件与 awaiting_confirmation 按序发布 —— `test_successful_attempt_commits_once_and_publishes_events`、`test_retryable_errors_back_off_then_fail_after_three_attempts`、`test_stage_and_confirmation_events_are_published_in_order`
+- [x] 续租线程延长租约；续租失败（租约被收回）时本次尝试放弃、不写业务结果 —— `test_heartbeat_extends_the_lease_while_the_handler_runs`、`test_heartbeat_notices_a_lost_lease_and_the_attempt_is_abandoned`
+- [x] 意外异常不把异常原文写进作业记录 —— `test_unexpected_errors_fail_without_leaking_the_exception_text`
+- [x] 他人的作业查询与取消均为 `NOT_FOUND`，与不存在的作业无法区分（Interface 层；HTTP 层随 PR-3） —— `test_job_submission.py::test_other_users_cannot_see_or_cancel_a_job`
+- [x] Celery 装配：内存传输下真实 Worker 执行投递的作业；Beat 三个定时任务与 `acks_late=False` —— `test_job_dispatch.py::test_celery_worker_runs_a_dispatched_job`、`test_beat_schedule_covers_dispatch_recovery_and_idempotency_cleanup`
+- [x] 迁移 0003 升级 → 降级 → 再升级结果一致；ORM 元数据与迁移后的反射结果一致（含 CHECK） —— `tests/db/test_models_match_migrations.py`。部分唯一索引的 WHERE 子句 `compare_metadata` 不比对，由上面的去重行为用例覆盖
+
+PR-2 的变异检查：
+
+| 临时改动 | 变红的测试 |
+| --- | --- |
+| 提交条件不查租约令牌 | `test_old_worker_cannot_commit_while_a_newer_attempt_is_running`（这条是为此补的：原有用例里新尝试已结束，状态条件就挡住了，令牌条件没被测到） |
+| 提交条件不查取消请求 | `test_cancel_after_the_last_checkpoint_still_blocks_the_commit` |
+| 领取不查 queued | `test_duplicate_delivery_is_claimed_only_once` 等 2 条 |
+| 提交时不查已有作业 | 去重相关 3 条 |
+| 结算忽略取消请求 | 取消相关 4 条 |
+| 恢复扫描不看租约是否过期 | `test_a_live_lease_is_left_alone` |
+| 业务写入放到另一个事务 | 14 条 |
+| retry_wait 到期不重新入队 | 重试与恢复相关 9 条 |
 
 接口（PR-3）：
 
@@ -212,8 +232,9 @@ E25、E26、E28 在单个工作包内部，按决策规程由实现者自定，�
 ## 6. 进展
 
 - 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 16 条用例，03 第 6 节 idempotency_requests 行已回写。
+- 已完成：PR-2 作业核心：迁移 0003、`contracts/enums.py` 的 `JobStatus`、`JobEventType`、`goalflow/jobs/`（提交、领取、续租、提交协议、重试、取消、恢复扫描、outbox 分发、Celery 与 Beat 装配）、`tests/jobs/` 44 条用例；03 第 6 节三行与 04 第 1、7 节已回写。分支 `feat/T07-job-core`，基于 PR-1。
 - 进行中：PR-1 评审中（PR #11）。
-- 未开始：PR-2 作业核心（含 Beat 每日调用 `purge_expired`）、PR-3 作业接口。
+- 未开始：PR-2 提 PR（等 PR-1 合并）；PR-3 作业接口。
 
 ## 7. 验证结果
 
@@ -245,6 +266,32 @@ $ uv run --project backend pytest backend/tests/idempotency/test_idempotency_iso
 
 那 1 条 warning 是 starlette 测试客户端对 anyio 别名的弃用提示，与本次改动无关。
 
+PR-2，于 2026-09-23 在同一环境执行（分支 `feat/T07-job-core`，基于 PR-1 的 `e79de46`）：
+
+```text
+$ bash scripts/check.sh
+All checks passed!
+Success: no issues found in 41 source files
+==> 契约漂移检查
+    契约一致
+==> 凭证粗筛
+    未发现疑似凭证
+检查通过
+
+$ bash scripts/test.sh
+==> 后端测试（all）
+251 passed, 1 warning in 35.16s
+==> 前端测试（all）
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+测试通过
+
+$ uv run --project backend pytest backend/tests/jobs -o addopts=""
+44 passed in 10.93s
+```
+
+`JobStatus`、`JobEventType` 进了 `contracts/`，但还没有路由用到，所以 OpenAPI 不变；PR-3 的接口会把它们带进生成物。
+
 ## 8. 未决问题
 
 | 问题 | 影响 | 需要谁决策 |
@@ -254,6 +301,7 @@ $ uv run --project backend pytest backend/tests/idempotency/test_idempotency_iso
 | 真实 Redis 的冒烟测试放在哪里（E24） | Redis 连接和序列化问题要到 T13 才能暴露 | 集成负责人 |
 | Nginx 代理 SSE 需要关闭缓冲并调大读超时（E20） | 不配置时事件会被缓冲，前端看不到进度 | T13 |
 | T08 设置模型 `max_retries` 时必须与 E13 共用同一预算 | 否则重试次数相乘，模型费用放大 | Agent 负责人（T08） |
+| PR-2 等 PR-1 合并后才能提 PR | 02-ai-collaboration 第 6 节：同一时间只允许一条新增迁移在途，0003 依赖 0002 | 仓库负责人合并 #11 |
 
 ## 9. 给接手者
 
@@ -264,4 +312,9 @@ $ uv run --project backend pytest backend/tests/idempotency/test_idempotency_iso
 5. **写接口接入幂等的样板是 `tests/idempotency/test_idempotency_http.py` 的探针路由**：`CurrentUserDep` 取身份，`require_idempotency_key` 取 key，`IdempotentRequest.build(...)` 基于校验后的请求体算摘要，`database.write()` 里调 `run_idempotent`，首次执行和重放都按 `outcome.result.id` 读当前状态再返回。
 6. **`run_idempotent` 里删除过期记录后必须先 flush。** SQLAlchemy 的工作单元对同一张表默认先 INSERT 后 DELETE，不 flush 就会撞 `(owner_id, request_key)` 唯一约束。变异检查确认过这一条。
 7. **测试文件名在整个 `backend/tests/` 下必须唯一。** 测试目录没有 `__init__.py`，`tests/idempotency/test_service.py` 会和 `tests/auth/test_service.py` 撞名，单独跑子目录能过、跑全量才报 import file mismatch。
-8. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
+8. **作业处理函数本体不能写业务表**，所有业务写入放进它返回的 `commit`。本体在事务外运行，可能被执行多次（重试、旧 Worker 晚返回）；`commit` 只会在"仍持有租约、未被取消"的写事务里被调用，且与作业转 succeeded 同一事务。写法见 `jobs/handlers.py` 的模块 docstring。
+9. **新增作业种类要登记两处**：在业务模块里 `@registry.handler("<kind>")` 注册，并把该模块加进 `jobs/celery_app.py` 的 `HANDLER_MODULES`——否则 API 能提交、Worker 却找不到处理函数，作业会以 INTERNAL_ERROR 失败。
+10. **Celery 任务必须 `shared=False`。** Celery 默认把 `@app.task` 登记到进程里所有的 app 上，同名任务互相覆盖；测试里构造的内存实例曾因此跑到模块级 `celery_app` 绑定的库上去。
+11. **外键指向别的模块表的模型，要在模型文件里 import 那个模块的 models**（E28）。只 import 本模块的进程（Worker）解析不到外键目标表，普通测试测不出来——测试进程里账号模块总被先 import。`test_job_recovery.py` 的"杀掉 Worker 进程"用例和 `test_idempotency_isolated_process.py` 都在子进程里跑，专门盯这条。
+12. **测试里要关掉续租线程**（`run(..., heartbeat_interval=None)` 是 `jobs_support.run` 的默认值）才能用假时钟精确控制租约何时过期；续租线程会把 `lease_until` 推到 `clock() + 60s`，和推进时钟的测试互相抢。
+13. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
