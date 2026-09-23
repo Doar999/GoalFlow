@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 评审中：PR-1（#11）、PR-2（#12）已合并；PR-3 作业接口评审中（#13） |
+| 状态 | 已完成：三个 PR 均已合并；"异步提交返回 202"一条验收挪到 T08（见第 5 节） |
 | 更新日期 | 2026-09-23 |
-| 相关 PR | #11（PR-1 幂等存储）、#12（PR-2 作业核心）已合并；#13（PR-3 作业接口）。均带 `contract-change` 标签 |
+| 相关 PR | #11（PR-1 幂等存储）、#12（PR-2 作业核心）、#13（PR-3 作业接口），均带 `contract-change` 标签，均已合并 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -249,12 +249,13 @@ PR-3 的变异检查：
 
 ## 6. 进展
 
-- 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 16 条用例，03 第 6 节 idempotency_requests 行已回写。
-- 已完成：PR-2 作业核心：迁移 0003、`contracts/enums.py` 的 `JobStatus`、`JobEventType`、`goalflow/jobs/`（提交、领取、续租、提交协议、重试、取消、恢复扫描、outbox 分发、Celery 与 Beat 装配）、`tests/jobs/` 44 条用例；03 第 6 节三行与 04 第 1、7 节已回写。分支 `feat/T07-job-core`，基于 PR-1。
-- 已合并：PR-1（#11）。
-- 已合并：PR-2（#12）。
-- 已完成：PR-3 作业接口：`api/routes/jobs.py`（inspect、watch SSE、cancel）、`jobs/stream.py`、`cancel_job` 接入幂等、`DatabaseDep`、OpenAPI 与前端类型重新生成；`test_job_api.py` 11 条。分支 `feat/T07-job-api`，已 rebase 到合并了 #12 的 main。
-- 进行中：PR-3 评审中（#13）。
+- 已完成（三个 PR 均已合并）：
+  - PR-1 通用幂等存储（#11）：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`），`tests/idempotency/` 16 条。
+  - PR-2 作业核心（#12）：迁移 0003、`JobStatus`、`JobEventType`、`goalflow/jobs/`（提交、领取、续租、提交协议、重试、取消、恢复扫描、outbox 分发、Celery 与 Beat 装配），`tests/jobs/` 44 条。
+  - PR-3 作业接口（#13）：`GET /api/jobs/{id}`、`GET /api/jobs/{id}/events`（SSE）、`POST /api/jobs/{id}/cancellation`，OpenAPI 与前端类型，`test_job_api.py` 11 条。
+  - 设计文档回写：03 第 6 节（idempotency_requests、jobs、job_events、outbox_events），04 第 1、7 节。
+- 挪出本工作包：第 5 节"异步提交返回 202 与原 `job_id`"由第一个提交作业的业务接口（T08 起）验收。
+- 留给后续工作包的事项见第 8 节。
 
 ## 7. 验证结果
 
