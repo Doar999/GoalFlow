@@ -12,7 +12,7 @@
 
 建计划会话：clarifying → profile_review → route_review → plan_review → activated。路线或计划生成中的状态由关联 job 显示，不将业务状态覆盖为 running。用户返回修改上游档案时，下游预览标记 stale；已启用的原计划保持当前版本直至新版本正式应用。
 
-后台作业：queued → running → succeeded/failed/cancelled/stale；可重试错误进入 retry_wait 再回 queued。等待用户选择属于业务会话状态，不保留一个持续占用 Worker 的任务。
+后台作业（已确认，[T07](../worklog/T07-job-execution.md) E9）：queued → running → succeeded/failed/cancelled/stale；可重试错误进入 retry_wait 再回 queued，最多 3 次尝试。后四个为终态。等待用户选择属于业务会话状态，不保留一个持续占用 Worker 的任务。
 
 任务执行：proposed → pending → in_progress → partial/completed/cancelled；partial 可继续执行，pending 可直接完成轻量任务。blocked 由依赖、开放阻碍和能力约束计算；今日延期属于反馈而非自动永久取消任务。取消、恢复和误操作更正走显式命令。验证状态与执行状态独立。
 
@@ -81,7 +81,7 @@
 
 提交操作先事务写 jobs/outbox，返回 job_id；分发失败重试 outbox。Worker 用租约抢占任务，网络调用在事务外；重试须复查输入版本、取消状态及已提交结果。
 
-SSE 持久化事件包括 queued、started、stage_completed、awaiting_confirmation、completed、failed，使用 job_id + sequence 补读。事件由作业层按图的节点完成情况发布，`astream_events()` 的框架事件不直接透传给前端——SSE 契约独立于编排实现，换图不改前端契约。临时 token 事件可不持久化，断线后查询最终消息/产物；不承诺逐 token 重播。连接终止不取消作业。所有查询与事件订阅都校验 owner_id。
+SSE 持久化事件（已确认，T07 E19）包括 queued、started、stage_completed、awaiting_confirmation、retrying、completed、failed、cancelled、stale，使用 job_id + sequence 补读；completed、failed、cancelled、stale 为终态事件，订阅方收到后即可结束。事件由作业层按图的节点完成情况发布，`astream_events()` 的框架事件不直接透传给前端——SSE 契约独立于编排实现，换图不改前端契约。临时 token 事件可不持久化，断线后查询最终消息/产物；不承诺逐 token 重播。连接终止不取消作业。所有查询与事件订阅都校验 owner_id。
 
 ## 8. 验收场景
 
