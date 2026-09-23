@@ -96,9 +96,9 @@ goal_profile_drafts 是可修改的交互状态，goal_profiles 是用户确认�
 
 | 表 | 关键字段 | 约束或用途 |
 | --- | --- | --- |
-| jobs | id, owner_id, kind, dedupe_key, input_refs_json, input_revision, status, attempts, lease_token, lease_until, cancel_requested_at, result_refs_json, error_code | (owner_id, kind, dedupe_key) 唯一；不把 Celery ID 当业务唯一身份 |
-| job_events | id, owner_id, job_id, sequence, event_type, payload_json | (job_id, sequence) 唯一；SSE 补读持久化阶段事件 |
-| outbox_events | id, owner_id, job_id, event_type, status, next_attempt_at, attempts | 与业务作业同事务写入；重复投递由 jobs 去重 |
+| jobs | id, owner_id, kind, dedupe_key, input_refs_json, input_revision, status, attempts, lease_token, lease_until, cancel_requested_at, next_attempt_at, result_refs_json, error_code, error_message, revision, created_at, updated_at, finished_at | (owner_id, kind, dedupe_key) 在 status 为 queued/running/retry_wait/succeeded 时唯一（部分唯一索引），failed、cancelled、stale 不占去重键，同一输入可重新提交；revision 供取消时的 expected_revision；不把 Celery ID 当业务唯一身份。见 [T07 交接卡](../worklog/T07-job-execution.md) E9—E11 |
+| job_events | id, owner_id, job_id, sequence, event_type, payload_json, created_at | (job_id, sequence) 唯一，sequence 单个作业内从 1 连续递增；事件与对应的状态变化同事务写入；SSE 补读持久化阶段事件 |
+| outbox_events | id, owner_id, job_id, event_type, status, next_attempt_at, attempts, created_at, sent_at | 与业务作业同事务写入；status 为 pending/sent，投递失败按指数退避重投；重复投递由 jobs 的领取条件更新去重 |
 | model_calls | id, owner_id, job_id, provider, model, prompt_version, input_tokens, output_tokens, estimated_cost, status, latency_ms | 用量统计；缺失用量不记作零；不记录密钥 |
 | idempotency_requests | id, owner_id, operation, request_key, request_hash, result_type, result_id, response_status, created_at | (owner_id, request_key) 唯一，operation 不在唯一约束内：同 key 换操作或换请求体都返回冲突；相同请求按结果引用返回资源当前状态与原状态码。只记录 2xx；与业务写入同一写事务，失败回滚不留记录；保留 7 天。见 [T07 交接卡](../worklog/T07-job-execution.md) E4—E8、E25 |
 | audit_events | id, owner_id, actor_kind, action, entity_type, entity_id, before_revision, after_revision, reason, request_id | 追踪自动调整、用户确认、关联变更及管理操作 |

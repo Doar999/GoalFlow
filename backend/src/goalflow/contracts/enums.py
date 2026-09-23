@@ -18,3 +18,41 @@ class UserStatus(StrEnum):
 
     ACTIVE = "active"
     DISABLED = "disabled"
+
+
+class JobStatus(StrEnum):
+    """后台作业状态（T07 决策 E9）。
+
+    queued → running → succeeded / failed / cancelled / stale；可重试错误经 retry_wait 回到 queued。
+    后四个是终态，进入后不再变化。等待用户确认属于业务会话状态，不是作业状态。
+    """
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    RETRY_WAIT = "retry_wait"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    STALE = "stale"
+
+
+TERMINAL_JOB_STATUSES: frozenset[JobStatus] = frozenset(
+    {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.STALE}
+)
+
+
+class JobEventType(StrEnum):
+    """作业持久化事件（T07 决策 E19），SSE 按 sequence 补读。
+
+    completed、failed、cancelled、stale 是终态事件，订阅方收到后即可关闭连接。
+    """
+
+    QUEUED = "queued"
+    STARTED = "started"
+    STAGE_COMPLETED = "stage_completed"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
+    RETRYING = "retrying"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    STALE = "stale"
