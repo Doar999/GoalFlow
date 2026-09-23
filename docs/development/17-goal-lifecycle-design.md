@@ -1,6 +1,6 @@
 # 目标生命周期与结束实现基线 v0.1
 
-状态：实施设计建议；承接已确认产品决策 [目标形态、生命周期与结束规则](../product/12-goal-lifecycle.md)（PRD D12）。下述命令、字段与判定为实施建议，实现前按 [决策规程](../engineering/00-workflow.md) 确认；`goals` 字段变更走契约 PR 并同步 [核心数据模型](03-data-model.md)。
+状态：首版实现基线已确认（2026-09-23 按决策规程确认），承接已确认产品决策 [目标形态、生命周期与结束规则](../product/12-goal-lifecycle.md)（PRD D12）。字段与判定以此为准实现；`goals` 字段变更走契约 PR 并同步 [核心数据模型](03-data-model.md)。
 
 原则：状态转换是显式命令，不是任何统计量的副作用；终态单向；暂停只改变调度参与度，不改写执行事实。
 
@@ -16,6 +16,8 @@ derive_goal(command: DeriveGoalCommand) -> Goal           # 以此为起点新�
 ```
 
 全部携带 `expected_revision` 与 Idempotency-Key。转换在短事务内完成：校验归属 → 校验转换合法 → 写状态与审计 → 递增 `user_planning_state` revision 触发重算。
+
+用户面只有一个激活操作：`activate_plan`（[计划引擎](12-plan-engine.md) 第 7 节）在同一事务内调用 `activate_goal` 完成 `draft → active`。幂等键只有一套，不存在"计划已启用而目标仍为 draft"的中间态；`activate_goal` 保留为模块内部函数，不暴露独立 HTTP 端点。
 
 **没有任何路径可以由任务完成率、验证结果或回顾结论自动写入 `completed`。** 验证结果只能触发"可以标记完成"的提示。
 
@@ -52,13 +54,13 @@ derive_goal(command: DeriveGoalCommand) -> Goal           # 以此为起点新�
 
 `close_goal` 写入 `closed_at`、`closure_kind`（`completed` / `stopped`）、`closure_note` 及成功标准的逐条快照——快照是必需的，否则撤销与回顾无法还原"当时哪几条未达成"。
 
-`undo_closure` 的窗口默认 24 小时（版本化参数）：
+`undo_closure` 的窗口默认 24 小时：窗口取值定义在 `contracts/` 的命名常量，审计事件记录 `closure_policy_version`；需要按用户或环境调整时再升级为参数表。
 
 - 窗口内恢复结束前状态并写审计；窗口外返回已过期，提示改用派生。
 - 撤销不重放期间被释放的预算占用，按恢复路径重新校验。
 - 撤销是补偿操作而非状态回退，审计中保留两条记录。
 
-`derive_goal` 复制源目标最新档案内容为新目标的档案草稿，写 `source_goal_id`，不复制计划版本、任务与执行记录。源目标保持终态。
+`derive_goal` 复制源目标最新档案内容为新目标的档案草稿，写 `source_goal_id`，不复制计划版本、任务与执行记录。源目标保持终态。派生关系以 `goals.source_goal_id`（带索引）与审计事件记录，不建独立表。
 
 ## 5. 维持型回顾
 
@@ -69,11 +71,17 @@ derive_goal(command: DeriveGoalCommand) -> Goal           # 以此为起点新�
 - `off_track` / `interrupted` 进入调整评估，可提出降低频率或调整内容的建议；超出计划包络时按待确认变更处理。
 - 维持型目标的计划没有终点：`plan_versions.horizon_end` 可空，滚动展开按 `review_period` 持续进行，里程碑退化为周期性回顾点。展开的唯一终止条件是目标离开 `active`。见 [计划引擎](12-plan-engine.md) 第 3 节。
 
-## 6. `goals` 字段建议
+## 6. `goals` 字段
 
-在现有 `kind`、`status` 之外建议补充：`paused_at`、`pause_reason`、`closed_at`、`closure_kind`、`closure_note`、`review_period`、`source_goal_id`。
+在 `kind`、`status` 之外确认补充：`paused_at`、`pause_reason`、`closed_at`、`closure_kind`、`closure_note`、`closure_criteria_snapshot_json`、`review_period`、`source_goal_id`。已同步 [核心数据模型](03-data-model.md) 第 2 节。
 
-`kind` 由档案的时间边界推导后写入 `goals`，档案新版本改变时间边界时同步更新并写审计；不允许 `goals.kind` 与 `goal_profiles` 的时间边界长期不一致。
+- `status` 的 CHECK 取值为 `draft/active/paused/completed/stopped`；CHECK 只挡脏值，转换合法性由服务层状态机判定。
+- `closure_criteria_snapshot_json` 在结束时一次写入、整读整取，保存用户对每条成功标准的确认选择（包括"完成并记录未达成项"的逐条记录）；符合 [核心数据模型](03-data-model.md) 第 1 节 JSON 存 TEXT、写入前校验的约定。
+- `review_period` 取值 `weekly/biweekly/monthly`，默认 `weekly`，存于 goals。
+- `source_goal_id` 建索引；一个派生目标只有一个源。
+- 暂停使被依赖任务进入计算态 `blocked`，不建列；tasks 表不因本设计新增任何字段。
+
+`kind` 由档案的时间边界推导后写入 `goals`，档案确认事务内同步更新并写审计；不允许 `goals.kind` 与 `goal_profiles` 的时间边界长期不一致。
 
 ## 7. 测试重点
 

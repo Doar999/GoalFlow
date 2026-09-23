@@ -36,6 +36,7 @@ const FALLBACK_MESSAGE_BY_CODE: Record<ApiErrorCode, string> = {
   CONFIRMATION_REQUIRED: "这是一次重大调整，需要你确认后才会生效",
   INPUT_STALE: "依据的内容已过期，请重新获取后重试",
   MODEL_UNAVAILABLE: "模型服务暂时不可用，请稍后重试",
+  GOAL_STATE_CONFLICT: "目标当前状态下不能进行这个操作",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
