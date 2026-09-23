@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T03（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后端与数据） |
-| 状态 | 进行中：第 4 节决策已全部确认，开始实现 |
+| 状态 | 评审中：实现与测试完成，`check.sh`、`test.sh` 全绿（见第 7 节）；待开 PR |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #（待填，单个 PR，带 `contract-change` 标签） |
 
@@ -28,14 +28,20 @@
 
 ```text
 backend/migrations/versions/0001_T03_*.py
+backend/migrations/env.py、backend/migrations/README  （仅注释：迁移手写、不挂 MetaData，见 C2）
 backend/src/goalflow/contracts/errors.py         （新增账号相关错误码，见 C11）
+backend/src/goalflow/contracts/enums.py          （新文件：UserRole、UserStatus）
+backend/src/goalflow/contracts/__init__.py       （仅 docstring）
 backend/src/goalflow/api/routes/auth.py          （路由、请求/响应模型）
 backend/src/goalflow/api/app.py                  （仅挂载 auth 路由）
-backend/src/goalflow/api/dependencies.py         （新增当前用户依赖）
+backend/src/goalflow/api/dependencies.py         （新增当前用户依赖与来源校验）
+backend/src/goalflow/api/errors.py               （RATE_LIMITED 补 Retry-After 响应头）
+backend/src/goalflow/api/main.py                 （启动即装配账号服务，配置缺失时拒绝启动）
 backend/src/goalflow/core/config.py              （新增 GOALFLOW_PUBLIC_ORIGIN，见 C7）
 .env.example                                     （同上；补 GOALFLOW_DATABASE_URL 示例值，见 C20）
 openapi/goalflow.yaml                            （生成物）
 frontend/src/shared/api/generated/               （生成物）
+frontend/src/shared/api/errors.ts                （仅为 4 个新错误码补兜底文案，见下）
 docs/development/03-data-model.md                （仅第 2 节账号四张表，与迁移对齐）
 docs/development/08-auth-design.md               （把本卡确认的项回写为"已确认"）
 docs/engineering/01-contracts-and-ownership.md   （仅第 5 节，写明账号接口的幂等例外，见 C12）
@@ -45,10 +51,12 @@ docs/engineering/01-contracts-and-ownership.md   （仅第 5 节，写明账号�
 
 ```text
 backend/src/goalflow/auth/                       （新模块：业务规则、Interface、本地命令）
-backend/src/goalflow/db/base.py                  （新文件：DeclarativeBase，见 C2）
+backend/src/goalflow/db/base.py                  （新文件：DeclarativeBase 与约束命名约定，见 C2）
+backend/src/goalflow/db/types.py                 （新文件：UtcDateTime 列类型）
 backend/tests/auth/
-backend/tests/e2e/
-backend/pyproject.toml、backend/uv.lock          （新增 argon2-cffi）
+backend/tests/db/test_models_match_migrations.py、test_column_types.py
+backend/tests/core/test_config.py                （生产环境配置用例补 public_origin）
+backend/pyproject.toml、backend/uv.lock          （新增 argon2-cffi；显式声明 tzdata）
 docs/worklog/T03-auth-session.md
 docs/worklog/README.md                           （仅索引表）
 ```
@@ -57,9 +65,16 @@ docs/worklog/README.md                           （仅索引表）
 
 ```text
 backend/src/goalflow/db/engine.py、session.py    （T16 已交付，需要改时回到数据负责人）
-frontend/                                        （生成物以外）
+frontend/                                        （生成物与 shared/api/errors.ts 以外）
 scripts/、.github/
 ```
+
+三处起草时没有预见、实现中才加入的路径：
+
+- `.pre-commit-config.yaml`、`scripts/check-generated-types.sh`：原钩子拒绝一切生成物提交，契约变更无法正常提交。由仓库负责人决定修改钩子，见决策 C23。这两个路径归集成负责人，评审时需其确认。
+
+- `frontend/src/shared/api/errors.ts`：错误码兜底文案是 `Record<ApiErrorCode, string>`，后端新增错误码后前端类型检查必然失败——这是 T02 有意设置的耦合。按 05"错误码变更同时更新前端类型"，只补 4 行文案，不动逻辑。
+- `backend/src/goalflow/db/types.py`：事件时间列类型是所有业务表共用的，放 `auth/` 会让后续模块反向依赖账号模块。
 
 ### 不在本次范围内
 
@@ -134,39 +149,82 @@ scripts/、.github/
 | C14 | 管理能力 | 首版只提供本地命令 `python -m goalflow.auth.cli`，子命令为 `promote` / `disable` / `issue-reset-token`。**不做** `/api/admin/*` HTTP 接口 | 08 同时列了本地命令和 HTTP 接口，后者是"接口建议"。首版没有管理页面消费 HTTP 接口，每多一个接口就多一块攻击面 | 产品行为、契约 | 已确认 |
 | C15 | 审计 | 账号相关事件先写成结构化日志（不含任何令牌、密码、完整 IP），**不建 `audit_events` 表** | `audit_events` 的字段（before/after_revision、entity）以计划变更为中心设计，由 T03 首先建表等于替后续模块定下 schema。表归谁见第 8 节 | 运维、合规 | 已确认 |
 | C19 | 客户端 IP | T03 只读 `request.client.host`。在反向代理之后取真实 IP，由部署时 uvicorn 的 `--proxy-headers --forwarded-allow-ips` 负责（T13） | 在应用里自己解析 `X-Forwarded-For` 容易被伪造 | 部署 | 已确认 |
-| C20 | `GOALFLOW_DATABASE_URL` 示例值（契约） | `.env.example` 填 `sqlite+pysqlite:///./data/goalflow.db`，并把 `data/` 加进 `.gitignore` | T02 第 8 节要求"T03 之前必须给出"；T16 已经在启动时拒绝空值 | 本地开发 | 已确认 |
+| C20 | `GOALFLOW_DATABASE_URL` 示例值（契约） | `.env.example` 填 `sqlite+pysqlite:///./data/goalflow.db`（`.gitignore` 已有 `/data/`，无需改动） | T02 第 8 节要求"T03 之前必须给出"；T16 已经在启动时拒绝空值 | 本地开发 | 已确认 |
+
+### 实现中补充的决策
+
+C21、C22 在单个工作包内部，按决策规程由实现者自定；C23 由仓库负责人决定。
+
+| 编号 | 决策 | 依据 | 影响范围 | 是否需要 RFC |
+| --- | --- | --- | --- | --- |
+| C21 | 新增 `GET /api/auth/registration` 返回 `registration_open` | 08 验收要求"注册接口和页面给出一致状态"，页面需要在提交前就知道注册是否开放 | 契约（随本 PR） | 否 |
+| C22 | 来源校验挂在 `require_current_user` 依赖里，另对 register / login / logout / reset 四个无需登录的写接口显式挂 `require_trusted_origin` | 凡是凭会话 Cookie 发起的写请求都必须校验来源；挂在身份依赖上，后续模块只要用了它就自动得到 CSRF 防护，不靠每个路由记得加 | 全部后续写接口 | 否 |
+| C23 | 把 pre-commit 钩子 `no-manual-edit-generated`（一律拒绝提交生成物）改为 `generated-types-match-contract`：按当前 `openapi/goalflow.yaml` 重新生成类型并逐字比对，一致才放行；契约文件变动也触发它。比对逻辑在新增的 `scripts/check-generated-types.sh` | 原钩子不区分手改与脚本生成，任何契约变更都无法正常提交生成物。由仓库负责人决定修改钩子本身，而不是用 `SKIP` 绕过。已验证：正常生成的文件通过，追加一行手改后失败 | 所有改契约的 PR；路径属集成负责人 | 否 |
 
 ## 5. 验收场景
 
 每条对应一个测试。数据库相关的一律使用真实库文件、WAL 模式和 T16 的连接装配。
 
-- [ ] 默认配置下可以注册；注册成功后返回会话 Cookie，`GET /api/auth/session` 返回本人信息，不含令牌
-- [ ] 同一账号标识（含大小写和全角/半角差异）并发注册 N 次，最终只有一个账号、一个会话，其余返回 `ACCOUNT_IDENTIFIER_UNAVAILABLE`
-- [ ] 关闭注册后：注册返回 `REGISTRATION_CLOSED`；已有用户仍可登录
-- [ ] 登录成功前后会话标识不同；已登录状态下再次登录会撤销旧会话
-- [ ] 账号不存在、密码错误、账号已禁用三种情况的响应完全一致，耗时处于同一数量级
-- [ ] 退出、退出全部、禁用、改密、重置之后，旧 Cookie 均返回 `UNAUTHENTICATED`
-- [ ] 超过空闲期或绝对期的会话失效（用可注入时钟测试，不 sleep）
-- [ ] 重置令牌只能使用一次；过期或已被新令牌作废的返回失败；使用后全部会话失效
-- [ ] 首位注册者不是管理员；只有 `promote` 命令能授予 admin
-- [ ] 数据隔离：用户 B 的 Cookie 无法读取或改动用户 A 的会话元数据；伪造的会话 ID、篡改的 Cookie 均被拒绝
-- [ ] Origin 不符、缺少 Origin 且 `Sec-Fetch-Site` 不是 `same-origin` 的写请求被拒绝
-- [ ] 超过限流阈值返回 `RATE_LIMITED` 与 `Retry-After`
-- [ ] 脱敏：跑完全部用例后，扫描库文件、捕获的日志和所有响应体，不出现任何密码、会话令牌或重置令牌原文
-- [ ] `GOALFLOW_ENV=production` 时 Cookie 带 Secure 和 `__Host-` 前缀；`GOALFLOW_PUBLIC_ORIGIN` 缺失时拒绝启动
-- [ ] 迁移 0001 升级 → 降级 → 再升级，结果一致；ORM 元数据与迁移后的反射结果一致
-- [ ] 无 SMTP、无第三方配置时，以上全部场景可完成
+测试文件均在 `backend/tests/auth/`，另注明者除外。
+
+- [x] 默认配置下可以注册；注册成功后返回会话 Cookie，`GET /api/auth/session` 返回本人信息，不含令牌 —— `test_api.py::test_register_sets_an_httponly_lax_cookie_and_never_returns_the_token`
+- [x] 同一账号标识（含大小写和全角/半角差异）并发注册 8 次，最终只有一个账号、一个会话，其余返回 `ACCOUNT_IDENTIFIER_UNAVAILABLE` —— `test_service.py::test_concurrent_registration_of_equivalent_identifiers_creates_one_account`
+- [x] 关闭注册后：注册返回 `REGISTRATION_CLOSED`，状态接口一致；已有用户仍可登录 —— `test_api.py::test_closed_registration_is_consistent_and_existing_users_can_still_log_in`
+- [x] 登录成功前后会话标识不同；已登录状态下再次登录会撤销旧会话 —— `test_api.py::test_login_issues_a_new_session_and_revokes_the_one_it_replaces`
+- [x] 账号不存在、密码错误、账号已禁用三种情况的响应完全一致，耗时处于同一数量级 —— `test_service.py::test_login_failures_are_indistinguishable`
+- [x] 退出、退出全部、禁用、改密、重置之后，旧 Cookie 均失效 —— `test_api.py` 的 logout / logout_all / change_password / reset 用例，`test_service.py::test_disable_revokes_sessions_and_blocks_login`
+- [x] 超过空闲期或绝对期的会话失效（可注入时钟，不 sleep） —— `test_service.py::test_session_expires_*`
+- [x] 重置令牌只能使用一次；过期或已被新令牌作废的返回失败；使用后全部会话失效 —— `test_service.py::test_reset_token_*`、`test_issuing_a_new_reset_token_voids_the_previous_one`
+- [x] 首位注册者不是管理员；只有 `promote` 命令能授予 admin —— `test_service.py::test_first_registered_user_is_not_admin`、`test_cli.py::test_promote`
+- [x] 数据隔离：用户 B 的 Cookie 只能看到自己、撤销自己；伪造、篡改、超长的 Cookie 均被拒绝 —— `test_api.py::test_users_only_ever_see_their_own_session`、`test_forged_and_tampered_cookies_are_rejected`
+- [x] Origin 不符、Origin 为 `null`、缺少 Origin 且无 `Sec-Fetch-Site: same-origin` 的写请求被拒绝，包括登录 CSRF —— `test_api.py::test_write_requests_from_other_origins_are_refused` 等 4 条
+- [x] 超过限流阈值返回 `RATE_LIMITED` 与 `Retry-After` —— `test_api.py::test_rate_limited_response_carries_retry_after`、`test_rate_limit.py`
+- [x] 脱敏：扫描库文件（含 WAL）、捕获的全部日志和所有响应体，不出现任何密码、会话令牌或重置令牌原文 —— `test_no_plaintext_secrets.py`
+- [x] 生产环境 Cookie 带 Secure 和 `__Host-` 前缀；生产环境缺少或非 https 的 `GOALFLOW_PUBLIC_ORIGIN` 拒绝启动 —— `test_api.py::test_production_cookie_uses_host_prefix_and_secure`、`tests/core/test_config.py::test_production_requires_https_public_origin`
+- [x] 迁移 0001 升级 → 降级 → 再升级，结果一致；ORM 元数据与迁移后的反射结果一致（含 CHECK 约束） —— `tests/db/test_models_match_migrations.py`
+- [x] 无 SMTP、无第三方配置时，以上全部场景可完成 —— 测试环境未配置任何邮件或第三方服务
+
+以下三条测试做过变异检查：把被保护的代码临时改坏后，对应测试确实变红，恢复后变绿。
+
+| 临时改动 | 变红的测试 |
+| --- | --- |
+| `token_digest` 直接返回令牌原文 | `test_no_plaintext_secrets.py` |
+| 删掉账号不存在时的假校验 `spend_verification_time` | `test_service.py::test_login_failures_are_indistinguishable` |
+| 去掉 `last_seen_at` 的写节流 | `test_service.py::test_last_seen_is_written_at_most_once_per_interval` |
 
 ## 6. 进展
 
-- 已完成：交接卡起草。
-- 已完成：第 4 节决策全部确认。
-- 进行中：契约面提交。
-- 未开始：业务实现提交。
+- 已完成：第 4 节决策全部确认；契约面（迁移 0001、错误码、共享枚举、路由与 schema、环境变量、OpenAPI 与前端类型）；业务实现（`auth/` 模块、`db/base.py`、`db/types.py`、部署者本地命令）；第 5 节全部验收用例；08 / 03 / 01 三份设计文档回写。
+- 未开始：开 PR（打 `contract-change` 标签，需契约负责人以外至少 1 人批准）。
+- 未做：Argon2 参数在**目标部署机型**上的耗时基准（C8）。开发机上 `test_credentials.py` 含多次哈希的全部用例合计约 0.2 秒，但这不是目标机型的数据。
 
 ## 7. 验证结果
 
-尚未执行任何命令。
+2026-09-23 在 Windows 10、Python 3.11、SQLite 3.50.4 上执行。数据库用例全部由迁移 0001 建出真实库文件，经 `create_database_engine()` 连接（WAL、`foreign_keys=ON`、`busy_timeout=5000`），不使用内存库。
+
+```text
+$ bash scripts/check.sh
+    $ uv lock --project backend --check
+    $ uv run --project backend ruff format --check backend
+    $ uv run --project backend ruff check backend
+    $ uv run --project backend mypy --config-file backend/pyproject.toml backend/src
+    $ pnpm --dir frontend install --frozen-lockfile --ignore-scripts
+    $ pnpm --dir frontend run lint
+    $ pnpm --dir frontend exec tsc --noEmit
+    $ pnpm --dir frontend exec prettier --check src
+==> 契约漂移检查
+    契约一致
+==> 凭证粗筛
+    未发现疑似凭证
+检查通过
+
+$ bash scripts/test.sh
+后端：189 passed, 1 warning in 15.80s
+前端：Test Files  3 passed (3) / Tests  16 passed (16)
+测试通过
+```
+
+后端 189 条 = 既有的 111 条 + 本工作包新增 78 条。唯一的 warning 是 starlette testclient 对 anyio 别名的弃用提示，改动前已存在，与本工作包无关。
 
 ## 8. 未决问题
 
@@ -178,6 +236,8 @@ scripts/、.github/
 | `idempotency_requests.owner_id` 与注册这类无主请求的关系 | C12 在 T03 里绕开了，但 01 第 5 节的规则需要写明例外 | 集成负责人 |
 | [T02 交接卡](T02-engineering-foundation.md) 头部状态仍是"评审中"，索引表写的是"已完成" | 文档不一致，不影响行为 | T02 负责人 |
 | 部署者可选开启验证码（08 的安全规则） | 首版不做 | 产品决策人 |
+| `Database.read()` 退出时回滚，回滚会让会话里的全部 ORM 实体过期（`expire_on_commit=False` 管不到回滚），读事务取出的实体出了 `with` 块再读属性就是 `DetachedInstanceError` | 每个在 `read()` 里取实体的模块都会踩到。本卡在 `auth/service.py` 用 `_detach()`（先 `expunge_all()` 再退出）绕开，没有改 `db/session.py` | 数据负责人：是否让 `read()` 在回滚前统一 expunge |
+| Argon2 参数在目标部署机型上的耗时基准（C8） | 参数取的是 OWASP 最低推荐；小内存机器上并发登录的峰值内存需要实测 | 集成负责人，在 T13 部署时做 |
 
 ## 9. 给接手者
 
@@ -185,4 +245,8 @@ scripts/、.github/
 2. **`last_seen_at` 不能每个请求都写。** 每个带登录态的请求都会校验会话，如果每次都更新，所有读请求都会变成写请求，WAL 模式"读不阻塞写"的好处就没了。见 C4 的节流规则。
 3. **账号不存在时也要做一次假校验。** 用一个固定的假哈希调用一次 verify，否则响应时间会泄露账号是否存在。
 4. **脱敏靠测试守住，不靠自觉。** 第 5 节的脱敏用例要真正扫描库文件、日志和响应体，不能只断言某个字段不在响应模型里。
-5. 其余沿用 [T16 交接卡](T16-data-layer-foundation.md) 第 6 节：不要绕过 `create_database_engine()`，也不要在写事务里发 HTTP 请求。
+5. **读事务里取出的 ORM 实体要先 detach 再用。** 见第 8 节。`auth/service.py` 里的 `_detach()` 就是为此存在的，删掉它，14 条服务层用例会同时报 `DetachedInstanceError`。
+6. **后续业务模块取当前用户一律用 `api.dependencies.CurrentUserDep`。** 它同时做了会话校验和写请求的来源校验（C22）；自己读 Cookie 等于绕过 CSRF 防护。
+7. **新模块加 ORM 模型时**，继承 `goalflow.db.base.Base`，事件时间用 `goalflow.db.types.UtcDateTime`，迁移手写且约束名与命名约定一致，并在 `tests/db/test_models_match_migrations.py` 补一行 import。
+8. **`tests/auth/auth_support.py` 不要并进 conftest。** 测试目录没有 `__init__.py`，测试模块 import 不到 conftest；而 `tests/db_compat/` 下还有另一个 conftest.py。
+9. 其余沿用 [T16 交接卡](T16-data-layer-foundation.md) 第 6 节：不要绕过 `create_database_engine()`，也不要在写事务里发 HTTP 请求。
