@@ -5,6 +5,9 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+# 只为把外键目标 users 表登记进同一份 MetaData，不读写账号表（T07 决策 E28）。
+# 缺了它，只 import 本模块的进程（例如 Celery Worker）第一次写入就会 NoReferencedTableError。
+import goalflow.auth.models  # noqa: F401
 from goalflow.db.base import Base
 from goalflow.db.types import UtcDateTime
 

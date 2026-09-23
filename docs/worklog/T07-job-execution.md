@@ -133,12 +133,13 @@ scripts/、.github/
 
 ### 实现中补充的决策
 
-E25、E26 在单个工作包内部，按决策规程由实现者自定，随 PR-1 评审。
+E25、E26、E28 在单个工作包内部，按决策规程由实现者自定，随 PR-1 评审。
 
 | 编号 | 决策 | 依据 | 影响范围 | 是否需要 RFC |
 | --- | --- | --- | --- | --- |
 | E25 | E7 的 `result_ref` 落成两列 `result_type`（≤32）、`result_id`（≤36），不存 JSON | 03 第 1 节："核心关联、日期、状态保持独立字段"，JSON 只用于领域扩展与快照。结果引用是核心关联。另一个原因：SQLite 里声明类型为 `JSON` 的列是 NUMERIC 亲和性，要么另写一个 JSON 列类型放进 T16 的 `db/types.py`，要么存成裸 TEXT，两者都不如两列清楚 | 数据模型（已回写 03） | 否 |
 | E26 | E6 的"路由用依赖打包 `IdempotentRequest`"改为：路由调用 `IdempotentRequest.build(owner_id=..., operation=..., key=..., body=..., path_params=...)`。key 仍由既有的 `require_idempotency_key` 依赖取得 | 摘要要基于**校验后的**请求模型（E5），而 FastAPI 依赖拿不到路由参数里已校验的请求体；硬做成依赖就得重复解析请求体。结果是 `api/` 在 PR-1 只改了一处 docstring，OpenAPI 不变 | 后续全部写路由的写法，样板见 `tests/idempotency/test_idempotency_http.py` | 否 |
+| E28 | `idempotency/models.py` 顶部 `import goalflow.auth.models`，**只为**把外键目标 users 表登记进同一份 MetaData，不读写账号表。后续凡是外键指向别的模块表的模型，照此处理 | 外键 `ForeignKey("users.id")` 在 flush 时要从 MetaData 里解析目标表。测试进程里账号模块总是先被 import，所以测不出来；只 import 本模块的进程（Celery Worker）第一次写入就会 `NoReferencedTableError`。这是 PR-2 的"杀掉 Worker 进程"用例在子进程里暴露的。01 第 8 节禁止 import 他模块内部文件去**读写**它的表，这里不读写，只登记元数据；替代方案是在每个进程入口集中 import 全部模型，但任何漏掉入口的脚本都会重新踩坑 | 所有外键跨模块的模型 | 否 |
 
 ### 事件与接口（PR-2、PR-3）
 
@@ -172,6 +173,7 @@ E25、E26 在单个工作包内部，按决策规程由实现者自定，随 PR-
 - [x] 用户 B 使用与用户 A 相同的 key，互不影响 —— `test_keys_are_scoped_per_owner`、`test_idempotency_http.py::test_another_user_with_the_same_key_gets_their_own_result`
 - [x] 保留期内重放、到期即按新请求执行（不依赖清理有没有跑过）；清理只删过期记录 —— `test_record_deduplicates_until_the_retention_period_ends`、`test_purge_removes_only_expired_records`
 - [x] 只记录 2xx；缺少 key 的写请求在任何写入之前被拒 —— `test_only_successful_responses_are_recorded`、`test_idempotency_http.py::test_missing_key_is_rejected_before_any_write`
+- [x] 只 import 幂等模块、从未 import 账号模块的进程（如 Celery Worker）也能写入 —— `test_idempotency_isolated_process.py`（子进程里跑；去掉 E28 的 import 即变红）
 - [x] 迁移 0002 升级 → 降级 → 再升级结果一致；ORM 元数据与迁移后的反射结果一致（含 CHECK） —— `tests/db/test_models_match_migrations.py`（已补 import）
 
 以下改动做过变异检查：把被保护的代码临时改坏，对应测试确实变红，恢复后变绿。
@@ -209,7 +211,7 @@ E25、E26 在单个工作包内部，按决策规程由实现者自定，随 PR-
 
 ## 6. 进展
 
-- 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 15 条用例，03 第 6 节 idempotency_requests 行已回写。
+- 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 16 条用例，03 第 6 节 idempotency_requests 行已回写。
 - 进行中：PR-1 评审中（PR #11）。
 - 未开始：PR-2 作业核心（含 Beat 每日调用 `purge_expired`）、PR-3 作业接口。
 
@@ -230,15 +232,15 @@ Success: no issues found in 34 source files
 
 $ bash scripts/test.sh
 ==> 后端测试（all）
-206 passed, 1 warning in 17.87s
+207 passed, 1 warning in 23.42s
 ==> 前端测试（all）
  Test Files  3 passed (3)
       Tests  16 passed (16)
 ==> 结果
 测试通过
 
-$ uv run --project backend pytest backend/tests/idempotency backend/tests/db/test_models_match_migrations.py -o addopts=""
-============================= 18 passed in 2.44s ==============================
+$ uv run --project backend pytest backend/tests/idempotency/test_idempotency_isolated_process.py -o addopts=""
+1 passed in 1.46s                     （去掉 E28 的 import 后：1 failed，NoReferencedTableError）
 ```
 
 那 1 条 warning 是 starlette 测试客户端对 anyio 别名的弃用提示，与本次改动无关。
