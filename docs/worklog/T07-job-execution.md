@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 进行中：PR-1（幂等存储）已完成实现，`check.sh`、`test.sh` 全绿，待提 PR |
+| 状态 | 进行中：PR-1（幂等存储）评审中（PR #11），`check.sh`、`test.sh` 全绿 |
 | 更新日期 | 2026-09-23 |
-| 相关 PR | #（待填） |
+| 相关 PR | #11（PR-1 幂等存储，带 `contract-change` 标签） |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -210,7 +210,7 @@ E25、E26 在单个工作包内部，按决策规程由实现者自定，随 PR-
 ## 6. 进展
 
 - 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 15 条用例，03 第 6 节 idempotency_requests 行已回写。
-- 进行中：PR-1 待提交与评审。
+- 进行中：PR-1 评审中（PR #11）。
 - 未开始：PR-2 作业核心（含 Beat 每日调用 `purge_expired`）、PR-3 作业接口。
 
 ## 7. 验证结果
