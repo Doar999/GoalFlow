@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T07（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，后台负责人） |
-| 状态 | 进行中：第 4 节决策已确认，PR-1（幂等存储）实现中 |
+| 状态 | 进行中：PR-1（幂等存储）已完成实现，`check.sh`、`test.sh` 全绿，待提 PR |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #（待填） |
 
@@ -33,7 +33,7 @@
 backend/migrations/versions/0002_T07_create_idempotency_requests.py   （PR-1）
 backend/migrations/versions/0003_T07_create_job_tables.py             （PR-2：jobs、job_events、outbox_events）
 backend/src/goalflow/contracts/enums.py          （PR-2：新增 JobStatus、JobEventType）
-backend/src/goalflow/api/dependencies.py         （PR-1：幂等请求依赖，在已有 require_idempotency_key 基础上补请求摘要）
+backend/src/goalflow/api/dependencies.py         （PR-1：仅 require_idempotency_key 的 docstring，见 E26）
 backend/src/goalflow/api/routes/jobs.py          （PR-3：inspect_job、watch_job、cancel_job）
 backend/src/goalflow/api/app.py                  （PR-3：仅挂载 jobs 路由）
 openapi/goalflow.yaml、frontend/src/shared/api/generated/  （PR-3：只经 api-generate.sh 生成）
@@ -131,6 +131,15 @@ scripts/、.github/
 | E17 | 恢复扫描 | Beat 每 30 秒执行一次：`running` 且租约已过期的 → 次数未用尽转 `retry_wait`，否则转 `failed`；`retry_wait` 已到期的 → 转回 `queued` 并写新的 outbox 行；`queued` 超过 5 分钟且没有待发 outbox 的 → 补写 outbox（覆盖 Redis 重启导致消息丢失）。每一步都是条件更新 | 条件更新让扫描天然幂等：误开两个 Beat，或者两次扫描重叠，都不会重复推进状态 | 部署 | 已确认 |
 | E18 | 作业种类 | `kind` 为字符串列，**不加 CHECK，不进共享枚举**。各业务模块在自己的包里注册处理函数，API 响应里的 `kind` 为普通字符串 | 如果进枚举或加 CHECK，每新增一个作业种类都要改契约和迁移。前端不需要按 kind 分支，它知道自己提交的是什么。未注册的 kind 在提交时直接报错，不会写入库 | T08、T09、T11 | 已确认 |
 
+### 实现中补充的决策
+
+E25、E26 在单个工作包内部，按决策规程由实现者自定，随 PR-1 评审。
+
+| 编号 | 决策 | 依据 | 影响范围 | 是否需要 RFC |
+| --- | --- | --- | --- | --- |
+| E25 | E7 的 `result_ref` 落成两列 `result_type`（≤32）、`result_id`（≤36），不存 JSON | 03 第 1 节："核心关联、日期、状态保持独立字段"，JSON 只用于领域扩展与快照。结果引用是核心关联。另一个原因：SQLite 里声明类型为 `JSON` 的列是 NUMERIC 亲和性，要么另写一个 JSON 列类型放进 T16 的 `db/types.py`，要么存成裸 TEXT，两者都不如两列清楚 | 数据模型（已回写 03） | 否 |
+| E26 | E6 的"路由用依赖打包 `IdempotentRequest`"改为：路由调用 `IdempotentRequest.build(owner_id=..., operation=..., key=..., body=..., path_params=...)`。key 仍由既有的 `require_idempotency_key` 依赖取得 | 摘要要基于**校验后的**请求模型（E5），而 FastAPI 依赖拿不到路由参数里已校验的请求体；硬做成依赖就得重复解析请求体。结果是 `api/` 在 PR-1 只改了一处 docstring，OpenAPI 不变 | 后续全部写路由的写法，样板见 `tests/idempotency/test_idempotency_http.py` | 否 |
+
 ### 事件与接口（PR-2、PR-3）
 
 | 编号 | 事项 | 推荐 | 依据与取舍 | 影响范围 | 状态 |
@@ -153,13 +162,27 @@ scripts/、.github/
 
 幂等（PR-1）：
 
-- [ ] 相同 key、相同内容重复提交，业务只执行一次，第二次返回原结果和原状态码
-- [ ] 相同 key、不同内容（包括换一个操作）返回 `IDEMPOTENCY_KEY_CONFLICT`
-- [ ] 相同 key 并发提交 8 次，业务只执行一次，其余全部重放同一结果
-- [ ] 业务失败导致回滚后，不留去重记录，同一个 key 重试可以成功
-- [ ] 请求体只有空白或键顺序不同时，判为相同内容
-- [ ] 用户 B 使用与用户 A 相同的 key，互不影响
-- [ ] 超过保留期的记录被清理，之后同一个 key 按新请求执行
+测试文件在 `backend/tests/idempotency/`。"业务执行了几次"一律看测试专用表 `probe_effects` 的行数，而不是看 `run_idempotent` 的返回值。
+
+- [x] 相同 key、相同内容重复提交，业务只执行一次，第二次返回原结果和原状态码 —— `test_idempotency_service.py::test_same_key_and_content_executes_once_and_replays`
+- [x] 相同 key、不同内容（包括换一个操作、换路径参数）返回 `IDEMPOTENCY_KEY_CONFLICT`，错误体符合统一结构且 details 为空 —— `test_same_key_with_different_content_conflicts`、`test_same_key_on_another_operation_conflicts`、`test_idempotency_http.py::test_reused_key_with_different_content_returns_the_error_contract`
+- [x] 相同 key 并发提交 8 次，业务只执行一次，其余全部重放同一结果 —— `test_concurrent_submissions_with_one_key_execute_once`
+- [x] 业务失败导致回滚后，不留去重记录，同一个 key 重试可以成功 —— `test_failed_business_write_leaves_no_record_and_the_key_can_be_retried`
+- [x] 请求体只有空白、键顺序不同或省略了默认值时，判为相同内容 —— `test_idempotency_http.py::test_retry_with_reformatted_body_replays_the_original_result`、`test_request_hash_ignores_key_order_and_omitted_defaults`
+- [x] 用户 B 使用与用户 A 相同的 key，互不影响 —— `test_keys_are_scoped_per_owner`、`test_idempotency_http.py::test_another_user_with_the_same_key_gets_their_own_result`
+- [x] 保留期内重放、到期即按新请求执行（不依赖清理有没有跑过）；清理只删过期记录 —— `test_record_deduplicates_until_the_retention_period_ends`、`test_purge_removes_only_expired_records`
+- [x] 只记录 2xx；缺少 key 的写请求在任何写入之前被拒 —— `test_only_successful_responses_are_recorded`、`test_idempotency_http.py::test_missing_key_is_rejected_before_any_write`
+- [x] 迁移 0002 升级 → 降级 → 再升级结果一致；ORM 元数据与迁移后的反射结果一致（含 CHECK） —— `tests/db/test_models_match_migrations.py`（已补 import）
+
+以下改动做过变异检查：把被保护的代码临时改坏，对应测试确实变红，恢复后变绿。
+
+| 临时改动 | 变红的测试 |
+| --- | --- |
+| 不查已有记录，每次都执行业务 | 8 条，含并发、重放、冲突、过期 |
+| 过期判断恒为"未过期" | `test_record_deduplicates_until_the_retention_period_ends` |
+| 删除过期记录后不 flush | 同上（撞唯一约束，见第 9 节第 6 条） |
+
+另做过一条"去掉 operation 比对"的变异，没有任何测试变红——operation 已经算进摘要，那段比对是死代码，已删除。
 
 作业（PR-2）：
 
@@ -186,13 +209,39 @@ scripts/、.github/
 
 ## 6. 进展
 
-- 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。
-- 进行中：PR-1 幂等存储。
-- 未开始：PR-2 作业核心、PR-3 作业接口。
+- 已完成：交接卡第 1—5 节；第 4 节 E1—E24 已确认。PR-1 幂等存储：迁移 0002、`goalflow/idempotency/`（`run_idempotent`、`IdempotentRequest`、`purge_expired`）、`tests/idempotency/` 15 条用例，03 第 6 节 idempotency_requests 行已回写。
+- 进行中：PR-1 待提交与评审。
+- 未开始：PR-2 作业核心（含 Beat 每日调用 `purge_expired`）、PR-3 作业接口。
 
 ## 7. 验证结果
 
-尚未执行任何命令。
+PR-1，于 2026-09-23 在 Windows（Git Bash）本地执行。数据库用例全部使用真实迁移建出的库文件、WAL 与 `create_database_engine()` 的连接装配，与生产同构。
+
+```text
+$ bash scripts/check.sh
+==> 后端检查
+All checks passed!
+Success: no issues found in 34 source files
+==> 前端检查
+==> 契约漂移检查
+==> 凭证粗筛
+==> 结果
+检查通过
+
+$ bash scripts/test.sh
+==> 后端测试（all）
+206 passed, 1 warning in 17.87s
+==> 前端测试（all）
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+==> 结果
+测试通过
+
+$ uv run --project backend pytest backend/tests/idempotency backend/tests/db/test_models_match_migrations.py -o addopts=""
+============================= 18 passed in 2.44s ==============================
+```
+
+那 1 条 warning 是 starlette 测试客户端对 anyio 别名的弃用提示，与本次改动无关。
 
 ## 8. 未决问题
 
@@ -210,4 +259,7 @@ scripts/、.github/
 2. **写事务里不要调模型，也不要投递 Celery 消息。** 投递放在事务提交之后，失败了由 outbox 补投——这正是 outbox 存在的原因。
 3. **不要用 Celery task ID 当作业身份**（03 第 6 节）。作业身份是 `jobs.id`，Celery 消息只是提醒 Worker 去领取。
 4. **幂等不需要"处理中"状态**（E6）。它依赖 `BEGIN IMMEDIATE` 的库级写锁；如果以后有人把业务写入拆成多个事务，这条保证就没了，应改为提交作业。
-5. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
+5. **写接口接入幂等的样板是 `tests/idempotency/test_idempotency_http.py` 的探针路由**：`CurrentUserDep` 取身份，`require_idempotency_key` 取 key，`IdempotentRequest.build(...)` 基于校验后的请求体算摘要，`database.write()` 里调 `run_idempotent`，首次执行和重放都按 `outcome.result.id` 读当前状态再返回。
+6. **`run_idempotent` 里删除过期记录后必须先 flush。** SQLAlchemy 的工作单元对同一张表默认先 INSERT 后 DELETE，不 flush 就会撞 `(owner_id, request_key)` 唯一约束。变异检查确认过这一条。
+7. **测试文件名在整个 `backend/tests/` 下必须唯一。** 测试目录没有 `__init__.py`，`tests/idempotency/test_service.py` 会和 `tests/auth/test_service.py` 撞名，单独跑子目录能过、跑全量才报 import file mismatch。
+8. 其余沿用 [T03 交接卡](T03-auth-session.md) 第 9 节：ORM 模型继承 `db.base.Base`，时间列用 `db.types.UtcDateTime`，迁移手写，并在 `test_models_match_migrations.py` 补 import；取当前用户一律用 `CurrentUserDep`。
