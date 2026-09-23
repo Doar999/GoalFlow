@@ -14,9 +14,10 @@
 - `src/goalflow/api/` FastAPI 应用、全局异常处理、`GET /api/health`
 - `src/goalflow/tools/` OpenAPI 导出
 
-`db/`、`migrations/` 与业务模块尚未创建。数据层要等 T01 的 seekdb 兼容性结论，
-见 [T01 交接卡](../docs/worklog/T01-seekdb-verification.md) 与
-[T02 交接卡](../docs/worklog/T02-engineering-foundation.md) 决策 A5。
+`db/`、`migrations/` 与业务模块尚未创建。数据库行为已由 T01 验证（结论见
+[T01 交接卡](../docs/worklog/T01-sqlite-verification.md)，用例在 `tests/db_compat/`）；
+生产连接装配属于创建 `src/goalflow/db/` 的工作包，届时把 `tests/db_compat/conftest.py`
+里的连接参数整体搬过去。另见 [T02 交接卡](../docs/worklog/T02-engineering-foundation.md) 决策 A5。
 
 ## 命令
 

@@ -53,8 +53,9 @@ jobs:
   test:
     name: 测试
     runs-on: ubuntu-latest
-    # seekdb 服务尚未接入。T01 兼容性验证完成后，在这里补 services 或容器启动步骤，
-    # 并让数据库相关测试跑在真实 seekdb 上——SQLite 通过不算通过。
+    # 数据库是 SQLite 单文件库，不需要 services 或容器。数据库行为验证套件在
+    # backend/tests/db_compat/，随 scripts/test.sh 一起跑，不设成可选作业——
+    # 它不依赖外部服务，跳过它没有理由。
     # 见 docs/engineering/03-code-and-test-standards.md。
     steps:
       - uses: actions/checkout@v7

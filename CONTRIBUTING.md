@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-需要：Git、Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 24+、[pnpm](https://pnpm.io/)、Docker（用于 seekdb 与 Redis）。
+需要：Git、Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 24+、[pnpm](https://pnpm.io/)、Docker（用于 Redis；数据库是 SQLite 单文件库，不需要容器）。
 
 ```bash
 git clone <仓库地址>

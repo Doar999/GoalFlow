@@ -77,7 +77,7 @@ body:
       description: 分支或提交、数据库版本、浏览器、部署方式
       placeholder: |
         分支/提交：
-        seekdb 版本：
+        Python / SQLite 版本：
         浏览器：
         部署方式：本地 / Docker Compose
     validations:

@@ -281,8 +281,8 @@ def test_d8_concurrent_budget_decrement_lets_only_one_win(raw: sqlite3.Connectio
 def test_d9_multiple_processes_write_without_unrecoverable_busy(raw: sqlite3.Connection, db_path) -> None:
     """D9（红线）：多进程并发写不产生无法通过重试恢复的 SQLITE_BUSY。
 
-    这是 SQLite 相对 seekdb 新引入的风险。生产形态下 API、Worker、Beat、outbox 分发器
-    是不同进程，写在库级别串行。这条验证"串行"退化成的是等待与重试，而不是丢写。
+    单文件库把写串行化到了库级别，而生产形态下 API、Worker、Beat、outbox 分发器是不同
+    进程。这条验证"串行"退化成的是等待与重试，而不是丢写。
     """
     raw.execute("CREATE TABLE counter (id INTEGER PRIMARY KEY, n INTEGER NOT NULL)")
     raw.execute("INSERT INTO counter VALUES (1, 0)")

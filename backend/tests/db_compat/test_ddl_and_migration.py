@@ -41,9 +41,8 @@ def _seed_tasks(conn: sa.Connection) -> None:
 def test_e1_ddl_is_transactional(raw: sqlite3.Connection) -> None:
     """E1：DDL 在事务里，回滚后不留残表。
 
-    seekdb 方案下这一项按"不支持"准备了替代实现（一个迁移只做一件 DDL、每步可重入）。
-    SQLite 支持事务性 DDL，但**那条替代实现仍然保留**——batch 模式的表重建步骤多，
-    逐步可重入在排查失败迁移时依然值钱。
+    DDL 可回滚，但**"一个迁移只做一件 DDL、每步可重入"这条规矩仍然保留**——batch
+    模式的表重建步骤多，逐步可重入在排查失败迁移时依然值钱。
     """
     raw.execute("BEGIN")
     raw.execute("CREATE TABLE half_done (x INTEGER)")

@@ -78,7 +78,7 @@ def test_b3_utc_timestamp_keeps_microseconds(raw: sqlite3.Connection) -> None:
 def test_b4_json_is_validated_on_write_and_queryable(raw: sqlite3.Connection) -> None:
     """B4：JSON 存 TEXT，写入前用 json() 校验，读取可用 json_extract 查询。
 
-    不使用 PostgreSQL 专属的 JSONB 类型或语法——这条约束从 seekdb 方案原样保留。
+    不使用 PostgreSQL 专属的 JSONB 类型或语法。
     """
     raw.execute("CREATE TABLE routes (id TEXT PRIMARY KEY, derived_metrics_json TEXT NOT NULL)")
     payload = {"weekly_minutes": 300, "phases": [{"key": "p1", "weeks": 4}]}

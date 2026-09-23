@@ -4,7 +4,7 @@
 
 ## 1. 已确认技术基线
 
-前端 React + TypeScript + Vite + shadcn/ui；Python + FastAPI；seekdb；SQLAlchemy + Alembic；Celery + Redis + Beat；SSE；Docker Compose + Nginx。Agent 编排采用 LangGraph（短生命周期图，不启用 checkpointer），模型接入采用 LangChain（`langchain-openai` / `langchain-anthropic`）。具体版本和供应商未固定。
+前端 React + TypeScript + Vite + shadcn/ui；Python + FastAPI；SQLite（单文件，WAL）；SQLAlchemy + Alembic（迁移启用 batch 模式）；Celery + Redis + Beat；SSE；Docker Compose + Nginx。Agent 编排采用 LangGraph（短生命周期图，不启用 checkpointer），模型接入采用 LangChain（`langchain-openai` / `langchain-anthropic`）。具体版本和供应商未固定。
 
 ## 2. 工作包
 
@@ -12,7 +12,7 @@ T08、T14 的 provider 范围已明确为 LangChain 的 `openai` 与 `anthropic`
 
 | ID | 工作包与建议负责人角色 | 依赖/输入 | 交付与验收 | 对应需求 |
 | --- | --- | --- | --- | --- |
-| T01 | seekdb 兼容性验证：数据负责人 | 架构和数据模型；目标版本在验证通过后写死 | 可重复运行的事务、唯一约束、JSON、并发、反射、迁移与恢复验证；记录不支持项和采用的替代实现。用例清单见 [T01 交接卡](../worklog/T01-seekdb-verification.md) | Q02、Q03 |
+| T01 | SQLite 数据库行为验证：数据负责人 | 架构和数据模型；[RFC 0003](../rfcs/0003-sqlite-as-primary-store.md) 被接受 | 可重复运行的事务、唯一约束、JSON、并发、反射、迁移与恢复验证；记录不支持项和采用的替代实现。用例清单与结论表见 [T01 交接卡](../worklog/T01-sqlite-verification.md) | Q02、Q03 |
 | T02 | 工程与契约基础：集成负责人 | 已选栈；接口草案；前端工程架构 | 目录、锁文件、构建检查、错误结构、请求去重与 revision 契约；FastAPI OpenAPI 生成前端类型并检查漂移 | 全部基础 |
 | T03 | 注册与账号会话：后端 | T01、T02、D07 | 自由注册、密码凭证、登录/退出、会话撤销、部署者辅助重置及可配置注册开关；双用户越权、并发同名注册和敏感值脱敏通过 | R01、Q01 |
 | T04 | 目标与计划版本：后端 | T01、T02；D12 已确认 | 目标、来源化档案草稿、确认档案、路线、阶段、里程碑、任务批次与计划草稿；战略版本不可变、草稿不启用、生命周期命令 | R02、R04、R05、R10 |
@@ -46,9 +46,9 @@ M1 是内部开发检查点，不能以单目标样例通过替代首版多目�
 
 负责人领取时记录允许修改的模块、依赖版本、输入/输出、验收场景、未决选择。交付包括代码/迁移、接口样例、验证结果与已知限制。公共迁移、共享类型及配置由指定负责人协调。
 
-测试集中在真实规则：数据库回滚、版本竞争、预算、依赖、用户隔离和模型异常。文案或低影响样式修改不需要重复建设镜像测试。使用真实 seekdb 进行数据库验收，不能用 SQLite 通过结果代替。
+测试集中在真实规则：数据库回滚、版本竞争、预算、依赖、用户隔离和模型异常。文案或低影响样式修改不需要重复建设镜像测试。数据库验收使用与生产同构的 SQLite 配置（同一组 pragma、WAL、真实库文件），不能用默认配置或内存库通过的结果代替。
 
-Agent 编排单独验收等待用户不占 Worker、重启可恢复、恢复后重新检查版本、原子确认和取消竞争。这些由 seekdb 业务状态与 jobs 表保证，**不依赖 LangGraph checkpointer**；验收时必须确认图在作业结束后没有遗留需要恢复的框架状态。
+Agent 编排单独验收等待用户不占 Worker、重启可恢复、恢复后重新检查版本、原子确认和取消竞争。这些由数据库业务状态与 jobs 表保证，**不依赖 LangGraph checkpointer**；验收时必须确认图在作业结束后没有遗留需要恢复的框架状态。
 
 ## 5. 首个集成演示脚本
 
@@ -63,6 +63,6 @@ Agent 编排单独验收等待用户不占 Worker、重启可恢复、恢复后�
 
 ## 6. 当前需先收敛的事项
 
-可独立推进设计：seekdb 验证用例、接口 schema、页面信息结构和排期规则测试样例。
+可独立推进设计：数据库行为验证用例、接口 schema、页面信息结构和排期规则测试样例。
 
 开始对应实现前需收敛：OpenAI/Anthropic 具体 API 子集与能力门槛，以及 LangChain / LangGraph 的锁定版本（T02）。D01 三类领域范围及其专业规则、D07 自由注册登录、D08 双 provider 及 D09/D10 辅助能力与附件范围已确认，其他默认值按 PRD 决策表集中确认。附件、链接与验证的实现基线见 [辅助能力、材料解析与验证实现基线](15-assistance-and-verification-design.md)，领域硬约束与校验点见 [领域策略包与约束校验实现基线](16-domain-policy-design.md)；其中新增接口与 `artifacts` 字段仍需契约 PR。预算金额继续暂缓，不在本计划指定付费资源。

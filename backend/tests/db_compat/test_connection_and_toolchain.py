@@ -117,8 +117,8 @@ def test_a4_reflection_sees_columns_indexes_unique_and_foreign_keys(engine: Engi
 def test_g1_runs_against_a_plain_file_on_this_platform(engine: Engine, db_path, record_property) -> None:
     """G1：开发机直接跑，不需要数据库服务进程或容器。
 
-    这条不是形式主义：seekdb 方案下 Windows 开发机必须先起容器才能跑数据库测试，
-    换成 SQLite 后"能不能在开发机上直接跑"变成了可断言的事实。
+    这条不是形式主义："开发机上跑数据库测试要不要先起容器"直接决定了这套用例会不会
+    被日常跳过。断言它，就是把"不需要外部依赖"固定成事实而不是印象。
     """
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE t (x INTEGER)"))

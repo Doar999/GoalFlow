@@ -26,8 +26,9 @@ class Environment(StrEnum):
 class Settings(BaseSettings):
     """从 GOALFLOW_ 前缀的环境变量与 .env 读取。
 
-    数据库与 Redis 的连接串格式要等 T01 的 seekdb 兼容性结论，
-    因此 database_url 默认留空，由使用方在需要时自行校验。
+    数据库连接串形如 sqlite+pysqlite:///<路径>（RFC 0003）。这里只读取字符串，
+    连接参数与 pragma 属于尚未创建的 db 模块，因此 database_url 默认留空，
+    由使用方在需要时自行校验。
     """
 
     model_config = SettingsConfigDict(
