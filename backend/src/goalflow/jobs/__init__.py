@@ -26,12 +26,16 @@ from goalflow.jobs.service import (
     submit_job,
 )
 from goalflow.jobs.store import JobView
+from goalflow.jobs.stream import HEARTBEAT, Heartbeat, JobEventView, StreamSettings, follow_events
 from goalflow.jobs.worker import run_job
 
 __all__ = [
+    "HEARTBEAT",
+    "Heartbeat",
     "InputStale",
     "JobCommit",
     "JobContext",
+    "JobEventView",
     "JobHandler",
     "JobInterrupted",
     "JobOutcome",
@@ -40,9 +44,11 @@ __all__ = [
     "Publisher",
     "RecoveryReport",
     "RetryableJobError",
+    "StreamSettings",
     "SubmittedJob",
     "cancel_job",
     "dispatch_outbox",
+    "follow_events",
     "get_job",
     "recover",
     "registry",

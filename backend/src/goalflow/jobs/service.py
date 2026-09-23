@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from goalflow.contracts.enums import TERMINAL_JOB_STATUSES, JobEventType, JobStatus
 from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.db.session import Database
+from goalflow.idempotency import IdempotentRequest, ResultRef, run_idempotent
 from goalflow.jobs.handlers import JobRegistry
 from goalflow.jobs.handlers import registry as default_registry
 from goalflow.jobs.models import (
@@ -141,48 +142,77 @@ def cancel_job(
     job_id: str,
     expected_revision: int,
     now: datetime,
+    idempotency: IdempotentRequest | None = None,
 ) -> JobView:
     """取消作业（E15）。
 
     - 已是终态，或已请求过取消：原样返回当前状态，不报错——用户在"刚好成功"的时刻点取消很常见。
     - queued、retry_wait：直接转 cancelled。
     - running：只记下取消请求，由 Worker 在检查点或提交时转 cancelled。已成功发布的结果不会被撤销。
+
+    HTTP 入口必须传 `idempotency`（01 第 5 节：写操作携带 Idempotency-Key）。重放时不再执行取消，
+    直接返回作业的当前状态（E7）。
     """
     with database.write() as session:
+
+        def execute() -> tuple[ResultRef, int]:
+            _request_cancellation(
+                session, owner_id=owner_id, job_id=job_id, expected_revision=expected_revision, now=now
+            )
+            return ResultRef("job", job_id), 200
+
+        if idempotency is None:
+            execute()
+        else:
+            run_idempotent(session, idempotency, execute, now=now)
         job = session.scalar(select(Job).where(Job.id == job_id, Job.owner_id == owner_id))
         if job is None:
             raise _not_found()
-        status = JobStatus(job.status)
-        if status in TERMINAL_JOB_STATUSES or (status is JobStatus.RUNNING and job.cancel_requested_at is not None):
-            return view_of(job)
-        if job.revision != expected_revision:
-            raise GoalflowError(
-                ErrorCode.REVISION_CONFLICT,
-                "作业状态已更新，请刷新后再试",
-                details={"current_revision": job.revision},
-            )
-
-        unchanged = [Job.status == status, Job.revision == expected_revision]
-        if status is JobStatus.RUNNING:
-            changed = transition(session, job_id, where=unchanged, values={"cancel_requested_at": now}, now=now)
-        else:
-            changed = transition(
-                session,
-                job_id,
-                where=unchanged,
-                values={
-                    "status": JobStatus.CANCELLED,
-                    "cancel_requested_at": now,
-                    "next_attempt_at": None,
-                    "finished_at": now,
-                },
-                now=now,
-            )
-            append_event(session, job_id=job_id, owner_id=owner_id, event_type=JobEventType.CANCELLED, now=now)
-        # 写事务持有库级写锁，刚读到的状态在事务结束前不会被别人改掉。
-        assert changed, "写事务内读到的状态不应失配"
-        session.refresh(job)
         return view_of(job)
+
+
+def _request_cancellation(
+    session: Session,
+    *,
+    owner_id: str,
+    job_id: str,
+    expected_revision: int,
+    now: datetime,
+) -> None:
+    job = session.scalar(select(Job).where(Job.id == job_id, Job.owner_id == owner_id))
+    if job is None:
+        raise _not_found()
+    status = JobStatus(job.status)
+    if status in TERMINAL_JOB_STATUSES or (status is JobStatus.RUNNING and job.cancel_requested_at is not None):
+        return
+    if job.revision != expected_revision:
+        raise GoalflowError(
+            ErrorCode.REVISION_CONFLICT,
+            "作业状态已更新，请刷新后再试",
+            details={"current_revision": job.revision},
+        )
+
+    unchanged = [Job.status == status, Job.revision == expected_revision]
+    if status is JobStatus.RUNNING:
+        changed = transition(session, job_id, where=unchanged, values={"cancel_requested_at": now}, now=now)
+    else:
+        changed = transition(
+            session,
+            job_id,
+            where=unchanged,
+            values={
+                "status": JobStatus.CANCELLED,
+                "cancel_requested_at": now,
+                "next_attempt_at": None,
+                "finished_at": now,
+            },
+            now=now,
+        )
+        append_event(session, job_id=job_id, owner_id=owner_id, event_type=JobEventType.CANCELLED, now=now)
+    # 写事务持有库级写锁，刚读到的状态在事务结束前不会被别人改掉。
+    assert changed, "写事务内读到的状态不应失配"
+    # 条件更新绕过了 ORM，让调用方随后读到的是库里的新值而不是会话里的旧快照。
+    session.expire(job)
 
 
 def _add_outbox(session: Session, *, job_id: str, owner_id: str, now: datetime) -> None:
