@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T02（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | Doar（集成与交付） |
-| 状态 | 评审中 |
-| 更新日期 | 2026-09-22 |
-| 相关 PR | #4；前置 [RFC 0002](../rfcs/0002-contract-pr-gate.md) #3（已合并） |
+| 状态 | 已完成：PR #4 已合并 |
+| 更新日期 | 2026-09-23 |
+| 相关 PR | #4（已合并）；前置 [RFC 0002](../rfcs/0002-contract-pr-gate.md) #3（已合并） |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -117,7 +117,7 @@ T03 加入第一个真实写接口时应补一条带嵌套请求体的用例。
   `app/`、`shared/api/`、`shared/test/`；`openapi/goalflow.yaml` 导出与前端类型生成；
   `.env.example` 与 `core/config.py` 对齐；CI 的 Node 升到 24。第 5 节验收场景全部勾选。
 - 进行中：无。
-- 未开始：无。本工作包的交付内容已齐，等待评审。
+- 已合并：PR #4。
 
 ## 7. 验证结果
 
@@ -185,12 +185,11 @@ mypy 配置生效性的**反向验证**（临时放一个未标注函数）：�
 | --- | --- | --- |
 | `scripts/test.sh` 的 `e2e` 分支在 `backend/tests/e2e/` 不存在时会因 pytest 退出码失败 | 本次通过补真实 e2e 用例规避，未改脚本 | 集成负责人 |
 | `09-frontend-architecture.md` 状态为"推荐"，本次落地已验证其配套选型可用，应改为"已确认" | 下一个 AI 会话读到"推荐"会再犹豫一次 | 前端负责人；`docs/development/` 不在本工作包可改路径内 |
-| 数据库驱动与连接串格式仍未定，`.env.example` 的 `GOALFLOW_DATABASE_URL` 保持空占位 | T03 之前必须给出 | 数据负责人（T01） |
-| CI 的 `test` 作业尚未接入真实数据库 | 数据库验收目前无处执行 | T01 结论后由集成负责人补 |
-| `backend/README.md` 与 `core/config.py` 的注释提到"等 T01 的 seekdb 结论"。若 [RFC 0003](../rfcs/0003-sqlite-as-primary-store.md)（数据库改 SQLite）被接受，这两处连同 `.env.example` 的数据库注释需要回写 | 措辞过期，不影响行为 | 数据负责人；本工作包按"只做 T02"的指示未预先改动 |
 | 未引入 React Router、React Hook Form、Zod、shadcn/ui | `09-frontend-architecture.md` 推荐了它们，但本次没有真实使用场景，装了等于锁一个未经验证的版本 | 前端负责人在 T10 首次使用时锁定版本 |
 
 RFC 0002 已随 PR #3 合并，原先记在这里的 `pr-hygiene` 阻塞（决策 A6）已解除。
+
+另有三条已由后续工作包解决、从上表移除：数据库连接串由 [T03 决策 C20](T03-auth-session.md) 给出示例值；数据库验收套件（SQLite 无需外部服务）随 `scripts/test.sh` 在 CI 的 `test` 作业里运行（[T01](T01-sqlite-verification.md)）；`backend/README.md`、`core/config.py` 与 `.env.example` 里等待 seekdb 结论的措辞已按 [RFC 0003](../rfcs/0003-sqlite-as-primary-store.md) 的回写清单改掉。
 
 ## 9. 给接手者
 
