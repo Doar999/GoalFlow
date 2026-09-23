@@ -9,7 +9,7 @@ from goalflow.auth.service import AuthConfig, AuthService, ClientInfo, CurrentUs
 from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import IDEMPOTENCY_KEY_HEADER, normalize_idempotency_key
 from goalflow.core.config import get_settings
-from goalflow.db.session import get_database
+from goalflow.db.session import Database, get_database
 
 _SAFE_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -21,6 +21,9 @@ def get_auth_service() -> AuthService:
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+# 业务模块的 Interface 自己开读写事务（T03 决策 C3），路由只把库交给它。测试里覆盖 get_database 换成临时库。
+DatabaseDep = Annotated[Database, Depends(get_database)]
 
 
 def client_info(request: Request) -> ClientInfo:
