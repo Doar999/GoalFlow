@@ -27,6 +27,6 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 
 | 工作包 | 交接卡 | 负责人 | 状态 |
 | --- | --- | --- | --- |
-| T01 | [T01-seekdb-verification.md](T01-seekdb-verification.md) | 待填 | 未开始（用例清单已就绪） |
+| T01 | [T01-sqlite-verification.md](T01-sqlite-verification.md) | 待填 | 阻塞（用例已通过，等 RFC 0003 接受后回写） |
 
 工作包定义见 [06-delivery-plan.md](../development/06-delivery-plan.md) 的 T01–T15。

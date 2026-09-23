@@ -1,13 +1,15 @@
 # 核心数据模型 v0.1
 
-状态：依据已确认产品方向制定的逻辑设计，供实现与评审使用；字段和状态为设计建议，不代表数据库兼容性已验证。数据库为 seekdb Server；正式 DDL 在目标版本兼容性验证后生成。
+状态：依据已确认产品方向制定的逻辑设计，供实现与评审使用；字段与状态为设计建议。数据库为 SQLite 单文件库，物理类型约定与并发协议已由 [T01](../worklog/T01-sqlite-verification.md) 实测确认。正式 DDL 随首批迁移生成。
 
 ## 1. 统一约定
 
-- 应用生成 UUID，候选存储类型 CHAR(36)；分钟数用整数，业务日期用 DATE，事件时间以 UTC 保存并通过用户 IANA 时区显示。DATETIME(6) 和 JSON 等物理类型须实测。
+- 物理类型：UUID 由应用生成、存 `TEXT`（36 字符规范形式）；分钟数存 `INTEGER`；业务日期存 `TEXT` 的 `YYYY-MM-DD`，可直接比较与排序；事件时间存 `TEXT` 的 ISO 8601 UTC 带微秒，显示时按用户 IANA 时区转换；JSON 存 `TEXT`，写入前用 `json()` 校验、查询用 `json_extract`，不使用 JSONB 类型或语法。
+- **SQLite 的声明类型只影响亲和性，不构成校验**：TEXT 列写入整数会被转成 text，INTEGER 列写入非数字字符串会原样保留，两种情况都不报错。字段类型正确因此是应用层责任——由 SQLAlchemy 的类型层负责往返转换、Pydantic 负责入口校验。
 - 用户私有表包含 owner_id；子对象必须与父对象同属一个用户。使用显式归属条件查询，后台执行也必须检查；仅知道记录 ID 不构成访问权限。
-- 可变聚合使用 revision 整数进行并发控制；更新携带 expected_revision，过期返回冲突，不直接覆盖。
-- 状态建议使用短字符串和后端枚举；唯一约束负责持久化去重。外键、CHECK 和迁移支持需实测，但归属、无环、状态转换等业务校验始终在服务端执行。
+- 可变聚合使用 revision 整数进行并发控制；更新携带 expected_revision，过期返回冲突，不直接覆盖。条件更新的影响行数按**匹配**计数（新值等于旧值也算 1），幂等重提不会被误判为版本冲突。
+- 状态使用短字符串和后端枚举；唯一约束负责持久化去重。复合唯一约束、CHECK、外键均可用，但**外键只在设了 `PRAGMA foreign_keys=ON` 的连接上生效**，该设置是连接级的、默认关闭。归属、无环、状态转换等业务校验始终在服务端执行。
+- "一个目标最多一个当前执行版本"这类条件唯一，用**部分唯一索引**表达，例如 `CREATE UNIQUE INDEX ... ON goal_profiles(goal_id) WHERE status = 'active'`。不引入 active_marker 之类的冗余标记列。
 - 以下表省略常见 created_at、updated_at；不可变版本只有 created_at。JSON 用于领域扩展与快照，核心关联、日期、状态保持独立字段。
 
 ## 2. 账号与目标
@@ -99,18 +101,24 @@ goal_profile_drafts 是可修改的交互状态，goal_profiles 是用户确认�
 | idempotency_requests | id, owner_id, operation, request_key, request_hash, result_ref | 同 key 不同请求体返回冲突；相同请求返回原结果 |
 | audit_events | id, owner_id, actor_kind, action, entity_type, entity_id, before_revision, after_revision, reason, request_id | 追踪自动调整、用户确认、关联变更及管理操作 |
 
-索引优先覆盖 owner_id + status、owner_id + local_date、goal_id + version_no、conversation_id + 顺序、job_id + sequence，以及待分发状态 + next_attempt_at。外部输入长度、索引长度及唯一键设计在迁移验证中检查。
+索引优先覆盖 owner_id + status、owner_id + local_date、goal_id + version_no、conversation_id + 顺序、job_id + sequence，以及待分发状态 + next_attempt_at。SQLite 没有 MySQL 那种单列索引字节上限，列宽不构成建索引的约束；外部输入长度仍需在应用层限制。
 
 ## 7. 事务与并发协议
 
-计划启用、任务反馈、时间额度修改及排期提交均在短事务中按相同顺序获取 user_planning_state，再获取目标/任务记录；或者使用实测支持的条件更新方案。所有影响排期的写路径必须遵循同一协议，否则不能保证预算一致性。
+SQLite 没有 `SELECT ... FOR UPDATE`，协议因此收敛为唯一一种形状：**短写事务 + 带 revision 条件的 UPDATE + 影响行数判定**，不依赖行锁。写事务一律以 `BEGIN IMMEDIATE` 开始。
+
+计划启用、任务反馈、时间额度修改及排期提交都先按 `WHERE owner_id = ? AND revision = ?` 递增 `user_planning_state`，影响行数为 0 即判定 stale 并返回冲突，再处理目标/任务记录。`user_planning_state` 在这里是**乐观并发的版本载体**，不是排队用的锁对象。所有影响排期的写路径必须遵循同一协议，否则不能保证预算一致性。
 
 模型调用在事务外进行。事务中重新检查 planning revision、目标版本、权限和依赖，过期建议返回 stale 并重算。启用事务同时切换当前计划、更新任务及每日安排、递增 revision 并写审计/outbox；任一步失败整体回滚。
 
-Worker 领取作业生成 lease_token，心跳续租。提交结果必须匹配仍有效的租约及运行状态；旧 Worker 即使晚返回也不能提交。过期租约由恢复扫描处理，重试生成新令牌。取消与成功提交采用条件更新竞争，不能在取消已生效后发布结果。
+Worker 领取作业生成 lease_token，心跳续租。领取本身是条件更新（`UPDATE ... WHERE status='queued' AND id=?`），靠影响行数判断是否抢到——`SKIP LOCKED` 不可用。提交结果必须匹配仍有效的租约及运行状态；旧 Worker 即使晚返回，条件更新也会影响 0 行，提交不了。过期租约由恢复扫描处理，重试生成新令牌。取消与成功提交采用条件更新竞争，不能在取消已生效后发布结果。
 
-## 8. 实现前验证清单
+多进程并发写在库级别串行。写冲突表现为可等待的 `SQLITE_BUSY`，由 `busy_timeout` 加带退避的有限重试处理；约束冲突是另一类异常，不进重试路径。
 
-seekdb 目标版本需验证：SQLAlchemy 连接/反射、Alembic 建表升级、唯一约束、JSON、日期时间、条件更新行数语义、行锁与隔离、事务回滚、死锁错误识别、备份恢复。不得假定 PostgreSQL JSONB、部分唯一索引、事务 DDL 或 SKIP LOCKED 可用。当前文档不提供未经验证的生产 DDL。
+## 8. 数据库行为验证
 
-完整用例清单、判定标准、每项的替代实现及红线定义见 [T01 交接卡](../worklog/T01-seekdb-verification.md)。红线为复合唯一约束、事务回滚、并发预算更新与恢复演练，任一失败走 RFC 重新评估选型；其余项按替代实现推进并回写本文。验证套件长期保留并在升级 seekdb 或更换驱动时重跑。
+数据库行为已在 SQLite 上逐项实测，结论表、每项的替代实现及红线定义见 [T01 交接卡](../worklog/T01-sqlite-verification.md)。验证套件在 `backend/tests/db_compat/`，随每次 PR 运行——它不需要外部服务，没有理由跳过。**升级 Python 或 SQLite、改动连接参数时，这套用例的结论必须重新确认。**
+
+两处"不支持"是既定前提，不是待补的缺口：类型靠亲和性而非校验（第 1 节已说明替代做法），以及 `SKIP LOCKED` 不可用（第 7 节已改为租约式抢占）。
+
+本文不提供生产 DDL；首批迁移生成时，唯一约束、部分唯一索引与 CHECK 按第 1 至 6 节的约束列写入。

@@ -9,6 +9,10 @@ license = { text = "Apache-2.0" }
 # 版本约束只写下界与主版本上界，精确版本由 uv.lock 固定。
 # LangChain 与 LangGraph 按 T02 交接卡决策 A2 在本工作包锁定主版本；
 # 数据访问、队列与驱动同样只锁版本，代码分别属于 T01/T03 与 T07。
+#
+# 数据库驱动不在这里：SQLite 用标准库 sqlite3，没有第三方驱动可锁（RFC 0003）。
+# 需要锁的是 SQLite 自身的版本，而它来自 Python 发行版——由
+# backend/tests/db_compat/test_connection_and_toolchain.py 的最低版本断言把关。
 dependencies = [
     "fastapi>=0.141.1,<1",
     "uvicorn[standard]>=0.53.0,<1",
@@ -16,7 +20,6 @@ dependencies = [
     "pydantic-settings>=2.15.0,<3",
     "sqlalchemy>=2.0.54,<3",
     "alembic>=1.20.0,<2",
-    "pymysql>=1.2.3,<2",
     "celery>=5.6.3,<6",
     "redis>=8.1.0,<9",
     "langchain>=1.4.2,<2",
@@ -33,6 +36,9 @@ dev = [
     "pytest>=9.1.1,<10",
     "httpx>=0.28.1,<1",
     "types-pyyaml>=6.0.12",
+    # 只供 T01 的 G3 用例验证"向量扩展能加载"。首版不开启语义检索，所以它还不是
+    # 运行时依赖；真要启用时再挪进上面的 dependencies（那属于另一个 RFC）。
+    "sqlite-vec>=0.1.9,<0.2",
 ]
 
 [build-system]
