@@ -27,8 +27,9 @@ class Settings(BaseSettings):
     """从 GOALFLOW_ 前缀的环境变量与 .env 读取。
 
     数据库连接串形如 sqlite+pysqlite:///<路径>（RFC 0003）。这里只读取字符串，
-    连接参数与 pragma 属于尚未创建的 db 模块，因此 database_url 默认留空，
-    由使用方在需要时自行校验。
+    格式校验与连接参数属于 `goalflow.db`——`create_database_engine()` 会在启动时
+    拒绝空值、非 SQLite 连接串和内存库。默认留空是为了让"忘记配"表现为一条明确的
+    启动错误，而不是悄悄连上某个默认位置的库文件。
     """
 
     model_config = SettingsConfigDict(

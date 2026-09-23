@@ -27,6 +27,8 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 
 | 工作包 | 交接卡 | 负责人 | 状态 |
 | --- | --- | --- | --- |
-| T01 | [T01-sqlite-verification.md](T01-sqlite-verification.md) | 待填 | 阻塞（用例已通过，等 RFC 0003 接受后回写） |
+| T01 | [T01-sqlite-verification.md](T01-sqlite-verification.md) | 待填 | 已完成（39 条用例通过，结论已回写） |
+| T02 | [T02-engineering-foundation.md](T02-engineering-foundation.md) | 待填 | 已完成 |
+| T16 | [T16-data-layer-foundation.md](T16-data-layer-foundation.md) | 待填 | 进行中（连接装配已完成，Alembic 脚手架待提） |
 
-工作包定义见 [06-delivery-plan.md](../development/06-delivery-plan.md) 的 T01–T15。
+工作包定义见 [06-delivery-plan.md](../development/06-delivery-plan.md) 的 T01–T16。
