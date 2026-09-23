@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T16（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，数据负责人） |
-| 状态 | 进行中：连接装配已完成并通过；Alembic 脚手架待单独提契约 PR |
+| 状态 | 进行中：连接装配与 Alembic 脚手架均已完成并通过，分两个 PR 待评审 |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #（待填） |
 
@@ -76,6 +76,8 @@ frontend/
 | B4 | 启动即拒绝：空连接串、非 SQLite 连接串、内存库 | 三者都会让"多进程共享同一个库文件"这个前提静默失效 | 全项目 | 否 |
 | B5 | 运行时 SQLite 最低版本断言放在 `create_database_engine()` | 沿用 T01 决策 A1，但从测试挪到启动路径——让不满足的环境启动就失败，而不是第一条 SQL 才失败 | 全项目 | 否 |
 | B6 | Alembic 脚手架单独提契约 PR，不与 `db/` 混在一起 | `backend/migrations/` 是契约路径，AGENTS.md 红线 1 | 工程流程 | 否 |
+| B7 | `alembic.ini` 的注释一律写英文。中文说明放 `backend/migrations/README` | Alembic 用 configparser 按**平台默认编码**读 ini，中文 Windows 上不是 UTF-8，非 ASCII 会让每条 alembic 命令都 `UnicodeDecodeError`。这是实测踩到的，不是预防性规定 | 迁移工具链 | 否 |
+| B8 | 迁移用顺序编号（`0001`、`0002`……），不用随机 rev id | 多分支同时新增迁移时，冲突直接表现为文件名撞车；随机 id 会各自挂在同一个 `down_revision` 上形成双 head，要到合并后才发现 | 工程流程 | 否 |
 
 ### B1 为什么要改 T01 的做法
 
@@ -94,6 +96,14 @@ T01 的 `conftest.py` 在 `begin` 事件里**无条件**发 `BEGIN IMMEDIATE`。
 | Celery Worker 的连接池参数 | Worker 进程数 × 池大小决定并发写的排队深度，直接关系到 T01 D9 那条红线在真实负载下是否还成立 | 后台负责人，在 T07 里定 |
 | `busy_timeout` 是否要按环境可调 | 现在是常量 5000ms。要可调就得加环境变量，那是契约变更 | 数据负责人与集成负责人 |
 | `DeclarativeBase` 放哪 | 放 `db/` 会让 `db/` 依赖业务模型；放各业务模块会有多个 Base。第一张表落地时必须定 | 数据负责人与后端负责人，在 T03 前定 |
+
+### 一条与工具输出相反的实测结论
+
+`alembic upgrade` 会打印 `Will assume non-transactional DDL`——那是 Alembic 对 SQLite 的默认判断。但本项目关掉了 pysqlite 的隐式事务管理，**失败的迁移实际会整体回滚**，不留半套表。
+
+这条靠读日志判断不了（日志说的正好相反），所以写成了用例：`test_failing_migration_leaves_no_half_applied_schema` 造一条"先建表再抛异常"的迁移，断言异常确实发生在迁移体内、且表没留下。
+
+即便如此，"一个迁移只做一件 DDL、每步可重入"这条规矩仍然保留——batch 模式的表重建步骤多，逐步可重入在排查失败迁移时依然值钱。
 
 ## 6. 给接手者
 

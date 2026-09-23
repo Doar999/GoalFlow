@@ -1,0 +1,65 @@
+# 数据库迁移
+
+事实源规则见 [docs/engineering/01-contracts-and-ownership.md](../../docs/engineering/01-contracts-and-ownership.md) 第 6 节，
+数据库选型与连接参数见 [RFC 0003](../../docs/rfcs/0003-sqlite-as-primary-store.md)，
+行为实测结论见 [T01 交接卡](../../docs/worklog/T01-sqlite-verification.md)。
+
+`backend/migrations/` 是**公共契约路径**，改动不得与业务实现混在同一个 PR 里。
+
+## 常用命令
+
+```bash
+# 新建迁移。编号必须手工指定，文件名形如 0001_T03_create_users.py
+uv run --project backend alembic revision -m "T03 create users" --rev-id 0001
+
+# 升级到最新
+uv run --project backend alembic upgrade head
+
+# 在演练库或备份副本上试跑，不碰配置里的那个库
+uv run --project backend alembic -x url=sqlite+pysqlite:///./scratch.db upgrade head
+```
+
+## 这套脚手架和 `alembic init` 默认模板的差别
+
+### 连接从 `goalflow.db` 取，不用 `alembic.ini` 的 `sqlalchemy.url`
+
+迁移必须跑在与生产**完全相同**的连接装配上。`foreign_keys`、`busy_timeout` 是连接级
+pragma，漏设不会报错——用 `engine_from_config` 另起一个 Engine 等于让迁移在一个比生产
+宽松的环境里通过，而差异要到运行时才暴露。
+
+`backend/tests/db/test_migrations.py` 里那条 WAL 断言就是盯这个：只有走
+`create_database_engine()` 库文件才会是 WAL 模式。
+
+### `render_as_batch=True`
+
+SQLite 的 `ALTER TABLE` 只支持有限操作，改列类型或加约束都要重建表。不开 batch 模式，
+这类迁移根本生成不出来。
+
+**batch 模式的表重建是丢数据的地方**：它会建新表、拷数据、删旧表、改名。漏一列就静默
+丢一列的数据，只断言"表还在"看不出来。review 必须逐列核对，并确认唯一索引跟着重建活
+了下来。
+
+### 顺序编号，不用随机 rev id
+
+文件名形如 `0007_T05_add_task_lock.py`。这样多个分支同时新增迁移时，冲突会直接表现为
+文件名撞车，而不是两条随机 rev id 各自挂在同一个 `down_revision` 上形成双 head——后者
+要到合并之后才发现。
+
+编号顺序由数据负责人统一决定，不要各自猜 `down_revision`。
+
+### `alembic.ini` 的注释必须是纯 ASCII
+
+Alembic 用 `configparser` 按**平台默认编码**读 `alembic.ini`。中文 Windows 上那不是
+UTF-8，文件里只要有一个非 ASCII 字符，每条 alembic 命令都会以 `UnicodeDecodeError`
+失败。中文说明因此放在本文件里，`alembic.ini` 只留英文注释。
+
+## 两条容易被记反的事实
+
+- **失败的迁移会整体回滚。** `alembic upgrade` 会打印 `Will assume non-transactional DDL`，
+  那是 Alembic 对 SQLite 的默认判断。但本项目关掉了 pysqlite 的隐式事务管理，DDL 实际
+  是事务性的（T01 E1）。`test_failing_migration_leaves_no_half_applied_schema` 每次 PR
+  都在验证这一点。即便如此，"一个迁移只做一件 DDL、每步可重入"这条规矩仍然保留——
+  batch 模式的表重建步骤多，逐步可重入在排查失败迁移时依然值钱。
+- **`target_metadata` 目前是 None，不要用 autogenerate。** 业务表尚未定义，此时
+  autogenerate 会把库里所有表都当成"待删除"。第一张表由 T03 带进来时在 `env.py` 里挂上
+  它的 `MetaData`，在那之前迁移一律手写。
