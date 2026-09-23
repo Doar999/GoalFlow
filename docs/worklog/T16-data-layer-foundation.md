@@ -4,7 +4,7 @@
 | --- | --- |
 | 工作包 | T16（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填，数据负责人） |
-| 状态 | 进行中：连接装配与 Alembic 脚手架均已完成并通过，分两个 PR 待评审 |
+| 状态 | 进行中：连接装配与 Alembic 脚手架均已完成并通过，合为一个 PR 待评审 |
 | 更新日期 | 2026-09-23 |
 | 相关 PR | #（待填） |
 
@@ -25,7 +25,7 @@
 ```text
 backend/src/goalflow/db/
 backend/tests/db/
-backend/migrations/                    （Alembic 脚手架，单独提契约 PR）
+backend/migrations/                    （Alembic 脚手架，契约路径，见决策 B6）
 backend/src/goalflow/core/config.py    （仅 Settings 的 docstring）
 docs/worklog/T16-data-layer-foundation.md
 docs/worklog/README.md                 （仅索引表）
@@ -75,7 +75,7 @@ frontend/
 | B3 | 不新增环境变量。`busy_timeout`、`synchronous` 等取值写成模块常量 | 环境变量属公共契约，加一个就要单独走契约 PR；这些值目前没有按环境调整的需求 | 部署 | 否，将来要可配置时是 |
 | B4 | 启动即拒绝：空连接串、非 SQLite 连接串、内存库 | 三者都会让"多进程共享同一个库文件"这个前提静默失效 | 全项目 | 否 |
 | B5 | 运行时 SQLite 最低版本断言放在 `create_database_engine()` | 沿用 T01 决策 A1，但从测试挪到启动路径——让不满足的环境启动就失败，而不是第一条 SQL 才失败 | 全项目 | 否 |
-| B6 | Alembic 脚手架单独提契约 PR，不与 `db/` 混在一起 | `backend/migrations/` 是契约路径，AGENTS.md 红线 1 | 工程流程 | 否 |
+| B6 | Alembic 脚手架与 `db/` **合在同一个 PR**，但保持为独立提交 | 偏离 AGENTS.md 红线 1（契约不与实现混 PR），由仓库负责人确认。理由：脚手架不含任何业务迁移（`versions/` 为空），`env.py` 又直接依赖本 PR 新建的 `create_database_engine()`，拆开反而要先合一个无法独立验证的半成品。**仅限本次**，T03 起的业务迁移仍按红线 1 单独提 PR | 工程流程 | 否 |
 | B7 | `alembic.ini` 的注释一律写英文。中文说明放 `backend/migrations/README` | Alembic 用 configparser 按**平台默认编码**读 ini，中文 Windows 上不是 UTF-8，非 ASCII 会让每条 alembic 命令都 `UnicodeDecodeError`。这是实测踩到的，不是预防性规定 | 迁移工具链 | 否 |
 | B8 | 迁移用顺序编号（`0001`、`0002`……），不用随机 rev id | 多分支同时新增迁移时，冲突直接表现为文件名撞车；随机 id 会各自挂在同一个 `down_revision` 上形成双 head，要到合并后才发现 | 工程流程 | 否 |
 
@@ -91,7 +91,7 @@ T01 的 `conftest.py` 在 `begin` 事件里**无条件**发 `BEGIN IMMEDIATE`。
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| 是否启用 STRICT 表（从 T01 第 9 节继承，仍未决） | 能把一部分类型校验还给数据库。但要求 SQLite ≥ 3.37（现断言 3.35），且**未验证** SQLAlchemy 能否声明 STRICT、Alembic batch 重建会不会把它丢掉 | 数据负责人 |
+| 是否启用 STRICT 表（从 T01 第 9 节继承，仍未决） | 能把一部分类型校验还给数据库，最直接的收益是分钟数类字段挡住非整数（非 STRICT 下 `100/3` 会静默存成 REAL）。已实测（SQLAlchemy 2.0.54 / SQLite 3.50.4）：`sqlite_strict=True` 能生成 `STRICT`，反射也能读回；但 SQLAlchemy 默认类型名 `VARCHAR(n)`、`BOOLEAN`、`DATETIME`、`JSON`、`NUMERIC` 在 STRICT 表里**建表即失败**，启用就必须约定所有列只用映射到 `TEXT`/`INTEGER` 的类型。另需把最低版本断言从 3.35 提到 3.37；batch 重建是否保留 STRICT **未端到端验证** | 数据负责人，T03 建第一张表前 |
 | FastAPI 的请求级会话依赖怎么给 | 现在只有上下文管理器。路由里是每请求一个会话，还是按读写分两个依赖，取决于 T03 的路由形态 | 后端负责人，在 T03 里定 |
 | Celery Worker 的连接池参数 | Worker 进程数 × 池大小决定并发写的排队深度，直接关系到 T01 D9 那条红线在真实负载下是否还成立 | 后台负责人，在 T07 里定 |
 | `busy_timeout` 是否要按环境可调 | 现在是常量 5000ms。要可调就得加环境变量，那是契约变更 | 数据负责人与集成负责人 |
