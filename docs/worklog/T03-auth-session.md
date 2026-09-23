@@ -101,7 +101,7 @@ scripts/、.github/
 | [03-data-model.md](../development/03-data-model.md) 第 1 节 | UUID 存 TEXT、事件时间存 ISO 8601 UTC、revision 并发控制 | 物理约定已确认（T01），字段为建议 |
 | [03-data-model.md](../development/03-data-model.md) 第 2 节 | users、password_credentials、sessions、password_reset_tokens | 原为设计建议，与 08 有出入，已由 C18 确认 |
 | [01-contracts 第 3、5 节](../engineering/01-contracts-and-ownership.md) | 契约单独 PR；写操作携带 Idempotency-Key；身份只从服务端会话获得 | 已确认 |
-| [T16 交接卡](T16-data-layer-foundation.md) 第 5 节 | `DeclarativeBase` 位置、请求级会话依赖留给 T03 定 | 已由 C2、C3 确认 |
+| [T16 交接卡](T16-data-layer-foundation.md) 第 2 节"不在本次范围内" | `DeclarativeBase` 位置、请求级会话依赖留给 T03 定 | 已由 C2、C3 确认，并回写 T16 交接卡 |
 | [T02 交接卡](T02-engineering-foundation.md) 决策 A4 与第 8 节 | 去重存储属 T03 / T07；`GOALFLOW_DATABASE_URL` 须在 T03 前给出 | 已确认 / 未决 |
 | `core/config.py` | 已有 `allow_registration`（默认开）与 `session_secret`（生产必填） | 已交付（T02） |
 
