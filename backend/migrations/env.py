@@ -27,8 +27,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 业务表尚未定义。第一张表由 T03 带进来时，在这里挂上它的 MetaData 才能用
-# autogenerate；在那之前 autogenerate 会把所有表都当成"待删除"，不要用。
+# 迁移一律手写，不挂 MetaData、不用 autogenerate（T03 决策 C2）：挂上就得在这里 import 全部
+# 业务模型，迁移从此依赖业务代码。ORM 与迁移是否一致由
+# tests/db/test_models_match_migrations.py 比对。此处为 None 时 autogenerate 会把所有表都当成
+# "待删除"，不要用它生成迁移。
 target_metadata = None
 
 

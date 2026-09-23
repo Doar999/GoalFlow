@@ -11,7 +11,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import Integer, String, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from goalflow.db.engine import create_database_engine
 from goalflow.db.session import Database
@@ -70,6 +71,45 @@ def test_conditional_update_reports_stale_via_rowcount(database: Database) -> No
 
     assert fresh == 1, "新值等于旧值也要计入影响行数"
     assert stale == 0, "版本不匹配返回 0，这是判定 stale 的唯一依据"
+
+
+class _TestBase(DeclarativeBase):
+    """测试专用，不能用 goalflow.db.base.Base——那份 metadata 会被 ORM 与迁移的一致性比对扫到。"""
+
+
+class _Budget(_TestBase):
+    __tablename__ = "budget"
+
+    owner_id: Mapped[str] = mapped_column(String, primary_key=True)
+    remaining: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer)
+
+
+def test_entities_loaded_in_read_stay_usable_after_it_ends(database: Database) -> None:
+    """`read()` 退出时回滚，而回滚会让会话里的实体过期（`expire_on_commit=False` 只管提交）。
+
+    过期实体离开会话后再读属性就是 DetachedInstanceError。所有"读事务取数 → 事务外计算 →
+    写事务落库"的业务路径都依赖读出来的实体在事务结束后仍然可用。
+    """
+    with database.read() as session:
+        budget = session.get(_Budget, "u1")
+
+    assert budget is not None
+    assert (budget.remaining, budget.revision) == (60, 1)
+
+
+def test_write_does_not_see_entities_detached_by_read(database: Database) -> None:
+    """读出来的实体已经脱离会话；要改它，得在写事务里重新取，不会被误当成脏数据提交。"""
+    with database.read() as session:
+        stale = session.get(_Budget, "u1")
+    assert stale is not None
+    stale.remaining = 0
+
+    with database.write() as session:
+        session.execute(text("UPDATE budget SET revision = revision + 1 WHERE owner_id = 'u1'"))
+
+    with database.read() as session:
+        assert session.execute(text("SELECT remaining, revision FROM budget")).one() == (60, 2)
 
 
 def test_read_does_not_take_the_write_lock(database: Database) -> None:

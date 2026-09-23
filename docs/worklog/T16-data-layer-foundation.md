@@ -52,8 +52,8 @@ frontend/
 ### 不在本次范围内
 
 - 任何业务表与业务迁移。
-- ORM 基类与模型定义。首张表由 T03 带，届时一并定 `DeclarativeBase` 的位置。
-- FastAPI 的请求级会话依赖。由 T03 决定形态，见第 5 节未决问题。
+- ORM 基类与模型定义。已由 T03 定下（[T03 决策 C2](T03-auth-session.md)）：`Base` 放 `db/base.py`，只定义基类与约束命名约定、不 import 任何业务模型，所以 `db/` 仍不依赖业务模块；迁移手写，ORM 与迁移的一致性由 `tests/db/test_models_match_migrations.py` 比对。
+- FastAPI 的请求级会话依赖。已由 T03 定下（[T03 决策 C3](T03-auth-session.md)）：**不提供**请求级会话依赖，事务边界归各业务模块的 Interface 函数，每个函数自己开 `read()` / `write()`；路由只做参数校验与调用。
 - Celery Worker 的连接池参数。属于 T07。
 
 ## 3. 输入依据
@@ -79,6 +79,7 @@ frontend/
 | B7 | `alembic.ini` 的注释一律写英文。中文说明放 `backend/migrations/README` | Alembic 用 configparser 按**平台默认编码**读 ini，中文 Windows 上不是 UTF-8，非 ASCII 会让每条 alembic 命令都 `UnicodeDecodeError`。这是实测踩到的，不是预防性规定 | 迁移工具链 | 否 |
 | B8 | 迁移用顺序编号（`0001`、`0002`……），不用随机 rev id | 多分支同时新增迁移时，冲突直接表现为文件名撞车；随机 id 会各自挂在同一个 `down_revision` 上形成双 head，要到合并后才发现 | 工程流程 | 否 |
 | B9 | **不启用 STRICT 表**，最低 SQLite 版本断言维持 3.35 | 仓库负责人决定。已实测（SQLAlchemy 2.0.54 / SQLite 3.50.4）：启用须把全部列类型映射为 `TEXT`/`INTEGER`（默认的 `VARCHAR(n)`、`BOOLEAN`、`DATETIME`、`JSON`、`NUMERIC` 在 STRICT 表里建表即失败），且 batch 重建是否保留 STRICT 未验证。放弃的代价：库不拦类型错误，例如分钟数字段写入 `100/3` 会静默存成 REAL（T01 B6）。类型正确性由 Pydantic 入口校验 + SQLAlchemy 类型层负责，个别关键字段需要库级兜底时用 `CHECK (typeof(col) = 'integer')` 逐列加 | 全部业务表 | 否；日后想启用需逐表重建 |
+| B10 | `read()` 退出时**先 `expunge_all()` 再回滚** | B2 只管提交、管不到回滚：回滚同样会让实体过期，读事务取出的实体出了 `with` 块再读属性就是 `DetachedInstanceError`。T03 首次用 ORM 实体时暴露，由仓库负责人要求在这里统一修，而不是各业务模块各自绕开。`test_session.py::test_entities_loaded_in_read_stay_usable_after_it_ends` 盯这条，已验证去掉 expunge 即变红 | 全部数据访问代码 | 否 |
 
 ### B1 为什么要改 T01 的做法
 
@@ -92,10 +93,8 @@ T01 的 `conftest.py` 在 `begin` 事件里**无条件**发 `BEGIN IMMEDIATE`。
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| FastAPI 的请求级会话依赖怎么给 | 现在只有上下文管理器。路由里是每请求一个会话，还是按读写分两个依赖，取决于 T03 的路由形态 | 后端负责人，在 T03 里定 |
 | Celery Worker 的连接池参数 | Worker 进程数 × 池大小决定并发写的排队深度，直接关系到 T01 D9 那条红线在真实负载下是否还成立 | 后台负责人，在 T07 里定 |
 | `busy_timeout` 是否要按环境可调 | 现在是常量 5000ms。要可调就得加环境变量，那是契约变更 | 数据负责人与集成负责人 |
-| `DeclarativeBase` 放哪 | 放 `db/` 会让 `db/` 依赖业务模型；放各业务模块会有多个 Base。第一张表落地时必须定 | 数据负责人与后端负责人，在 T03 前定 |
 
 ### 一条与工具输出相反的实测结论
 
@@ -107,9 +106,10 @@ T01 的 `conftest.py` 在 `begin` 事件里**无条件**发 `BEGIN IMMEDIATE`。
 
 ## 6. 给接手者
 
-四件事，前两件搬错了不会报错：
+五件事，前两件搬错了不会报错：
 
 1. **不要把 `read()` 改成 IMMEDIATE。** 见决策 B1。这是本工作包唯一一处刻意偏离 T01 验证套件的地方，偏离的理由写在那里。
 2. **连接级 pragma 漏设无声。** `foreign_keys` 默认关闭、`busy_timeout` 默认为 0，都是连接级的、不写进库文件。`install_connection_hooks()` 负责每条新连接重设一次；如果将来有人绕过 `create_database_engine()` 自己建 Engine，这层保护就没了，而且不会有任何提示。
 3. **写事务里不要调模型、不要发 HTTP。** 写锁是库级的，一个慢事务会把所有写路径堵住。模型调用一律在事务外，事务里只重新校验版本再落库——这是 `03-data-model.md` 第 7 节的要求，不是优化建议。
 4. **`db/` 不要 import 业务模块。** 它被所有业务模块依赖，反向依赖会立刻变成循环。`contracts/` 已经有同样的约束，理由相同。
+5. **`read()` 里的 `expunge_all()` 不要删。** 见决策 B10。删掉后读事务取出的实体一出 `with` 块就不可用；另外脱离会话的实体只带已加载的列，关联与延迟列要在块内取全，改动也要在 `write()` 里重新取实体再改。

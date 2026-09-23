@@ -60,6 +60,8 @@ UTF-8，文件里只要有一个非 ASCII 字符，每条 alembic 命令都会�
   是事务性的（T01 E1）。`test_failing_migration_leaves_no_half_applied_schema` 每次 PR
   都在验证这一点。即便如此，"一个迁移只做一件 DDL、每步可重入"这条规矩仍然保留——
   batch 模式的表重建步骤多，逐步可重入在排查失败迁移时依然值钱。
-- **`target_metadata` 目前是 None，不要用 autogenerate。** 业务表尚未定义，此时
-  autogenerate 会把库里所有表都当成"待删除"。第一张表由 T03 带进来时在 `env.py` 里挂上
-  它的 `MetaData`，在那之前迁移一律手写。
+- **`target_metadata` 是 None，不要用 autogenerate。** 迁移一律手写（T03 决策 C2）：挂上
+  `MetaData` 就得让 `env.py` import 全部业务模型，迁移从此依赖业务代码。此时 autogenerate
+  会把库里所有表都当成"待删除"。ORM 模型与迁移是否一致由
+  `tests/db/test_models_match_migrations.py` 比对；新模块加了模型，要在那里补一行 import。
+  约束名按 `goalflow.db.base.NAMING_CONVENTION` 手写，与模型推出的名字保持一致。

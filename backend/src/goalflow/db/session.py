@@ -68,11 +68,19 @@ class Database:
 
         回滚而不是提交，是因为读事务没有要提交的东西；显式结束事务才能让下一次读
         拿到新快照，否则会一直停在旧快照上（T01 D2）。
+
+        回滚前先把实体全部 expunge。回滚会让会话里的实体过期（`expire_on_commit=False`
+        只管提交、管不到回滚），过期实体离开会话后再读属性就是 DetachedInstanceError——
+        而"读事务取数、事务外计算、写事务落库"正是业务模块的标准写法。expunge 之后实体
+        带着已加载的列值脱离会话，可以直接读；但未加载的关联与延迟列仍然不可访问，需要的
+        数据要在 `with` 块内取全。脱离后的实体改了也不会被任何写事务提交，要改请在
+        `write()` 里重新取。
         """
         session = self._read_sessions()
         try:
             yield session
         finally:
+            session.expunge_all()
             session.rollback()
             session.close()
 

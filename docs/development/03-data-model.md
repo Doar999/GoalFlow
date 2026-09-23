@@ -16,10 +16,12 @@
 
 | 表 | 关键字段 | 约束或用途 |
 | --- | --- | --- |
-| users | id, account_identifier, role, timezone, status | identifier 规范化后唯一；凭证另表保存 |
-| password_credentials | user_id, password_hash, hash_scheme, changed_at | 不存明文或可逆密码；推荐 Argon2id |
-| sessions | id, user_id, token_hash, last_seen_at, expires_at, revoked_at | 原始令牌不落库；请求验证有效性与撤销状态 |
-| password_reset_tokens | id, user_id, token_hash, issued_by, expires_at, consumed_at | 一次性、短时有效；首版由管理员或本地命令签发 |
+| users | id, account_identifier, role, status, timezone, revision, created_at, updated_at | account_identifier 存规范化值（NFKC → 去首尾空白 → casefold）并唯一；role ∈ user/admin，status ∈ active/disabled，均有 CHECK；timezone 为 IANA 名，缺省 UTC；凭证另表保存 |
+| password_credentials | user_id, password_hash, hash_scheme, changed_at | 不存明文或可逆密码；Argon2id |
+| sessions | id, user_id, token_hash, created_at, last_seen_at, expires_at, revoked_at, user_agent_summary, ip_prefix | 原始令牌不落库，token_hash 为 HMAC-SHA256 摘要且唯一；expires_at 为绝对过期，空闲过期由 last_seen_at 推算；ip_prefix 只存 IPv4 /24 或 IPv6 /48 |
+| password_reset_tokens | id, user_id, token_hash, issued_by, created_at, expires_at, consumed_at | 一次性、30 分钟有效；首版只由部署者本地命令签发，签发新令牌时旧的未用令牌即刻作废 |
+
+以上四张表由迁移 0001 建立，取舍见 [T03 交接卡](../worklog/T03-auth-session.md) 决策 C18。
 | goals | id, owner_id, title, domain, domain_confidence, kind, status, isolation_mode, active_profile_id, current_plan_version_id, revision | domain 是 Agent 的内部策略路由，不是用户必填标签；kind 为 achievement/maintenance 且由档案时间边界推导（已确认）；一个目标最多一个当前执行版本。生命周期字段建议见 [目标生命周期与结束实现基线](17-goal-lifecycle-design.md) 第 6 节 |
 | goal_profile_drafts | id, owner_id, goal_id, revision, content_json, source_map_json, gaps_json, assumptions_json, contradictions_json, readiness | 每个目标一个当前草稿；保存澄清进度，readiness 为 needs_input/review_ready/blocked |
 | goal_profiles | id, owner_id, goal_id, version_no, result_definition, success_criteria_json, baseline_json, constraints_json, facts_json, confirmed_at | (goal_id, version_no) 唯一；用户事实、假设、建议分别标注来源与确认状态 |

@@ -13,6 +13,7 @@ def _production(**overrides):
         "env": Environment.PRODUCTION,
         "session_secret": REAL_SECRET,
         "credential_encryption_key": REAL_SECRET,
+        "public_origin": "https://goalflow.example.com",
         "_env_file": None,
     }
     values.update(overrides)
@@ -51,3 +52,25 @@ def test_secrets_are_not_exposed_in_repr():
     assert REAL_SECRET not in str(settings)
     assert settings.session_secret is not None
     assert settings.session_secret.get_secret_value() == REAL_SECRET
+
+
+@pytest.mark.parametrize("origin", ["", "http://goalflow.example.com"])
+def test_production_requires_https_public_origin(origin):
+    # 生产 Cookie 带 Secure 与 __Host- 前缀，只在 https 下生效；缺了它等于关掉 CSRF 防护。
+    with pytest.raises(ValidationError, match="GOALFLOW_PUBLIC_ORIGIN"):
+        _production(public_origin=origin)
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["goalflow.example.com", "https://goalflow.example.com/", "https://goalflow.example.com/app", "ftp://x.example"],
+)
+def test_public_origin_must_be_a_bare_origin(origin):
+    # Origin 请求头是逐字比较的，带路径或末尾斜杠的配置永远匹配不上，等于拒绝所有写请求。
+    with pytest.raises(ValidationError, match="GOALFLOW_PUBLIC_ORIGIN"):
+        Settings(public_origin=origin, _env_file=None)
+
+
+def test_local_accepts_http_origin_and_empty_origin():
+    assert Settings(public_origin="http://localhost:5173", _env_file=None).public_origin == "http://localhost:5173"
+    assert Settings(_env_file=None).public_origin == ""
