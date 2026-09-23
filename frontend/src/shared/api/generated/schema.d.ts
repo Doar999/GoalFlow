@@ -181,6 +181,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询作业
+         * @description 刷新页面、断线或事件流结束后，用它取得作业的最终状态与结果引用。
+         */
+        get: operations["inspect_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消作业
+         * @description 排队或等待重试中的作业立即取消；运行中的作业记下取消请求，在下一个检查点停下。已结束的作业原样返回当前状态，已成功发布的结果不会被撤销。
+         */
+        post: operations["request_job_cancellation_api_jobs__job_id__cancellation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 订阅作业事件（SSE）
+         * @description text/event-stream。每条消息的 id 为 sequence、event 为事件类型、data 为 JobEventMessage 的 JSON。先补发 Last-Event-ID 之后的全部持久化事件，再持续推送新事件；收到终态事件后服务端关闭连接。无新事件时每 15 秒发一行注释作为心跳；单条连接最长 5 分钟，之后由客户端重连。断开连接不会取消作业。
+         */
+        get: operations["watch_job_api_jobs__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -208,6 +268,14 @@ export interface components {
         AuthSessionResponse: {
             session: components["schemas"]["SessionInfo"];
             user: components["schemas"]["AccountUser"];
+        };
+        /** CancelJobRequest */
+        CancelJobRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -275,6 +343,111 @@ export interface components {
              */
             status: "ok";
         };
+        /**
+         * JobEventMessage
+         * @description 事件流里每条消息的 data 字段（JSON）。SSE 的 id 为 sequence，event 为 type。
+         */
+        JobEventMessage: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Payload
+             * @description 随事件类型而定，例如 stage_completed 带 stage 名
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Sequence
+             * @description 单个作业内从 1 起连续递增；断线重连时作为 Last-Event-ID 发回
+             */
+            sequence: number;
+            /** @description completed、failed、cancelled、stale 是终态事件，收到后流随即结束 */
+            type: components["schemas"]["JobEventType"];
+        };
+        /**
+         * JobEventType
+         * @description 作业持久化事件（T07 决策 E19），SSE 按 sequence 补读。
+         *
+         *     completed、failed、cancelled、stale 是终态事件，订阅方收到后即可关闭连接。
+         * @enum {string}
+         */
+        JobEventType: "queued" | "started" | "stage_completed" | "awaiting_confirmation" | "retrying" | "completed" | "failed" | "cancelled" | "stale";
+        /**
+         * JobResponse
+         * @description 作业的当前状态。只含展示与恢复所需的字段，不含输入快照。
+         */
+        JobResponse: {
+            /**
+             * Attempts
+             * @description 已经开始过的尝试次数，最多 3 次
+             */
+            attempts: number;
+            /**
+             * Cancel Requested
+             * @description 已请求取消但作业仍在运行，等待 Worker 在下一个检查点停下
+             */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** @description 失败、重试等待或过期时的错误码 */
+            error_code: components["schemas"]["ErrorCode"] | null;
+            /**
+             * Error Message
+             * @description 面向用户的错误说明
+             */
+            error_message: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description 作业种类，由提交它的业务模块定义
+             */
+            kind: string;
+            /**
+             * Result Refs
+             * @description 成功后产出的资源引用；未成功时为空
+             */
+            result_refs: components["schemas"]["JobResultRef"][];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            status: components["schemas"]["JobStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** JobResultRef */
+        JobResultRef: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @description 结果资源的类型，例如 route_set
+             */
+            type: string;
+        };
+        /**
+         * JobStatus
+         * @description 后台作业状态（T07 决策 E9）。
+         *
+         *     queued → running → succeeded / failed / cancelled / stale；可重试错误经 retry_wait 回到 queued。
+         *     后四个是终态，进入后不再变化。等待用户确认属于业务会话状态，不是作业状态。
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "retry_wait" | "succeeded" | "failed" | "cancelled" | "stale";
         /** LoginRequest */
         LoginRequest: {
             /** Account Identifier */
@@ -731,6 +904,183 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    inspect_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作业 ID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 作业不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_job_cancellation_api_jobs__job_id__cancellation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 作业 ID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelJobRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 作业不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 作业版本已更新（REVISION_CONFLICT），或 Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    watch_job_api_jobs__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 已收到的最后一个 sequence；浏览器重连时自动携带 */
+                "Last-Event-ID"?: number | null;
+            };
+            path: {
+                /** @description 作业 ID */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 事件流；schema 描述的是每条消息的 data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["JobEventMessage"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 作业不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ErrorResponse"];
                 };
             };
         };

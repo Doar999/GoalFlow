@@ -34,6 +34,17 @@ components:
       - session
       title: AuthSessionResponse
       type: object
+    CancelJobRequest:
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: CancelJobRequest
+      type: object
     ChangePasswordRequest:
       properties:
         current_password:
@@ -122,6 +133,153 @@ components:
       - status
       title: HealthResponse
       type: object
+    JobEventMessage:
+      description: 事件流里每条消息的 data 字段（JSON）。SSE 的 id 为 sequence，event 为 type。
+      properties:
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        payload:
+          additionalProperties: true
+          description: 随事件类型而定，例如 stage_completed 带 stage 名
+          title: Payload
+          type: object
+        sequence:
+          description: 单个作业内从 1 起连续递增；断线重连时作为 Last-Event-ID 发回
+          minimum: 1.0
+          title: Sequence
+          type: integer
+        type:
+          $ref: '#/components/schemas/JobEventType'
+          description: completed、failed、cancelled、stale 是终态事件，收到后流随即结束
+      required:
+      - sequence
+      - type
+      - payload
+      - created_at
+      title: JobEventMessage
+      type: object
+    JobEventType:
+      description: '作业持久化事件（T07 决策 E19），SSE 按 sequence 补读。
+
+
+        completed、failed、cancelled、stale 是终态事件，订阅方收到后即可关闭连接。'
+      enum:
+      - queued
+      - started
+      - stage_completed
+      - awaiting_confirmation
+      - retrying
+      - completed
+      - failed
+      - cancelled
+      - stale
+      title: JobEventType
+      type: string
+    JobResponse:
+      description: 作业的当前状态。只含展示与恢复所需的字段，不含输入快照。
+      properties:
+        attempts:
+          description: 已经开始过的尝试次数，最多 3 次
+          minimum: 0.0
+          title: Attempts
+          type: integer
+        cancel_requested:
+          description: 已请求取消但作业仍在运行，等待 Worker 在下一个检查点停下
+          title: Cancel Requested
+          type: boolean
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        error_code:
+          anyOf:
+          - $ref: '#/components/schemas/ErrorCode'
+          - type: 'null'
+          description: 失败、重试等待或过期时的错误码
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 面向用户的错误说明
+          title: Error Message
+        finished_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Finished At
+        id:
+          title: Id
+          type: string
+        kind:
+          description: 作业种类，由提交它的业务模块定义
+          title: Kind
+          type: string
+        result_refs:
+          description: 成功后产出的资源引用；未成功时为空
+          items:
+            $ref: '#/components/schemas/JobResultRef'
+          title: Result Refs
+          type: array
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - revision
+      - id
+      - kind
+      - status
+      - attempts
+      - result_refs
+      - error_code
+      - error_message
+      - cancel_requested
+      - created_at
+      - updated_at
+      - finished_at
+      title: JobResponse
+      type: object
+    JobResultRef:
+      properties:
+        id:
+          title: Id
+          type: string
+        type:
+          description: 结果资源的类型，例如 route_set
+          title: Type
+          type: string
+      required:
+      - type
+      - id
+      title: JobResultRef
+      type: object
+    JobStatus:
+      description: '后台作业状态（T07 决策 E9）。
+
+
+        queued → running → succeeded / failed / cancelled / stale；可重试错误经 retry_wait 回到 queued。
+
+        后四个是终态，进入后不再变化。等待用户确认属于业务会话状态，不是作业状态。'
+      enum:
+      - queued
+      - running
+      - retry_wait
+      - succeeded
+      - failed
+      - cancelled
+      - stale
+      title: JobStatus
+      type: string
     LoginRequest:
       properties:
         account_identifier:
@@ -488,3 +646,168 @@ paths:
       summary: 存活检查
       tags:
       - meta
+  /api/jobs/{job_id}:
+    get:
+      description: 刷新页面、断线或事件流结束后，用它取得作业的最终状态与结果引用。
+      operationId: inspect_job_api_jobs__job_id__get
+      parameters:
+      - description: 作业 ID
+        in: path
+        name: job_id
+        required: true
+        schema:
+          description: 作业 ID
+          maxLength: 36
+          title: Job Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 作业不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 查询作业
+      tags:
+      - jobs
+  /api/jobs/{job_id}/cancellation:
+    post:
+      description: 排队或等待重试中的作业立即取消；运行中的作业记下取消请求，在下一个检查点停下。已结束的作业原样返回当前状态，已成功发布的结果不会被撤销。
+      operationId: request_job_cancellation_api_jobs__job_id__cancellation_post
+      parameters:
+      - description: 作业 ID
+        in: path
+        name: job_id
+        required: true
+        schema:
+          description: 作业 ID
+          maxLength: 36
+          title: Job Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelJobRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 作业不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 作业版本已更新（REVISION_CONFLICT），或 Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 取消作业
+      tags:
+      - jobs
+  /api/jobs/{job_id}/events:
+    get:
+      description: text/event-stream。每条消息的 id 为 sequence、event 为事件类型、data 为 JobEventMessage 的 JSON。先补发
+        Last-Event-ID 之后的全部持久化事件，再持续推送新事件；收到终态事件后服务端关闭连接。无新事件时每 15 秒发一行注释作为心跳；单条连接最长 5 分钟，之后由客户端重连。断开连接不会取消作业。
+      operationId: watch_job_api_jobs__job_id__events_get
+      parameters:
+      - description: 作业 ID
+        in: path
+        name: job_id
+        required: true
+        schema:
+          description: 作业 ID
+          maxLength: 36
+          title: Job Id
+          type: string
+      - description: 已收到的最后一个 sequence；浏览器重连时自动携带
+        in: header
+        name: Last-Event-ID
+        required: false
+        schema:
+          anyOf:
+          - minimum: 0
+            type: integer
+          - type: 'null'
+          description: 已收到的最后一个 sequence；浏览器重连时自动携带
+          title: Last-Event-Id
+      responses:
+        '200':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/JobEventMessage'
+                type: string
+          description: 事件流；schema 描述的是每条消息的 data
+        '401':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 作业不存在，或不属于当前用户
+        '422':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 订阅作业事件（SSE）
+      tags:
+      - jobs
