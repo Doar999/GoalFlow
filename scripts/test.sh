@@ -8,7 +8,8 @@
 #   bash scripts/test.sh backend    仅后端
 #   bash scripts/test.sh frontend   仅前端
 #
-# 注意：数据库相关验收必须在真实 seekdb 上执行，SQLite 通过不算通过。
+# 注意：数据库相关验收必须在与生产同构的 SQLite 配置上执行（同一组 pragma、WAL、
+# 真实库文件），默认配置或内存库通过不算通过。
 # 见 docs/engineering/03-code-and-test-standards.md。
 
 set -euo pipefail

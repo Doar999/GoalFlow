@@ -33,7 +33,7 @@
 
 - OpenAI / Anthropic 具体 API 子集与模型能力门槛（provider 选型本身已由 [RFC 0001](0001-adopt-langchain-langgraph.md) 确认）
 - 具体约束阈值的后续调整（领域规则、附件范围与验证方式已确认，见产品文档 10 与 11；可移动日期范围与投入阈值已确认，见产品文档 13）
-- seekdb 不兼容项的替代实现方案（依赖 T01 结论）
+- 启用语义检索或全文检索作为产品能力（向量方案已由 [RFC 0003](0003-sqlite-as-primary-store.md) 定为 sqlite-vec，但首版不启用）
 
 已确认的默认值不需要 RFC，清单见 [05-module-contracts.md](../development/05-module-contracts.md)"默认值状态"。
 

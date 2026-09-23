@@ -1,13 +1,13 @@
 # 首版后端架构提案
 
-状态：用户已确认总体方案，数据库指定为 OceanBase seekdb，替代最初建议的 PostgreSQL；其余组件按本方案推进。具体版本、驱动与迁移兼容性尚待实施验证。资料核对日期：2026-09-19。
+状态：用户已确认总体方案，数据库为 SQLite 单文件库（见 [RFC 0003](../rfcs/0003-sqlite-as-primary-store.md)）；其余组件按本方案推进。数据库行为已由 [T01](../worklog/T01-sqlite-verification.md) 实测验证。资料核对日期：2026-09-23。
 
 ## 技术组合
 
 | 责任 | 推荐 |
 | --- | --- |
 | HTTP 接口与请求校验 | FastAPI + Pydantic |
-| 业务数据 | OceanBase seekdb，建议采用 Server 模式 |
+| 业务数据 | SQLite 单文件库，WAL 模式，驱动为标准库 `sqlite3` |
 | 数据访问与迁移 | SQLAlchemy 2 + Alembic |
 | 后台执行 | Celery Worker + Redis 消息队列 |
 | 定期扫描 | 单实例 Celery Beat，提交到期作业 |
@@ -15,7 +15,7 @@
 | 附件 | 私有对象存储，数据库保存归属和元数据，供应商待定 |
 | 初期部署 | Linux + Docker Compose + Nginx，同域提供网页与 /api |
 
-采用模块化单体：一个 Python 后端代码库，API、Worker、Beat 为不同进程，共用业务模块和数据库。初期可同机部署；单机存在故障停机风险，需备份和恢复验证。Windows 开发者通过容器运行 Worker 等依赖，环境版本实施前锁定。
+采用模块化单体：一个 Python 后端代码库，API、Worker、Beat 为不同进程，共用业务模块和数据库。数据库是随进程打开的本地文件，因此这三类进程**必须同主机、同本地文件系统、同一个库文件**，且该文件不得置于 NFS / SMB 等网络文件系统——SQLite 的锁依赖 POSIX 文件锁语义，网络文件系统上不可靠。这也意味着 Worker 无法横向扩展到第二台主机；当前部署形态本就是单机，但要扩容就得先换数据库，不是换部署方式。单机存在故障停机风险，恢复演练见 T01 的 F2。Windows 开发者不需要为数据库起容器（T01 G1 已验证）。
 
 ## 模块及 Interface
 
@@ -28,7 +28,7 @@
 
 按 codebase-design 技能，复杂规则集中在上述模块的少量 Interface 后；HTTP 路由与后台 Worker 调用同一套规则。Agent 步骤的调用顺序由 LangGraph 承担，业务规则不进入图节点内部。
 
-编排与模型接入已确认：Agent 步骤实现为 LangGraph `StateGraph`，模型通过 LangChain 统一 chat model 抽象接入，provider 范围为 OpenAI 与 Anthropic（PRD D08），供应商与模型由每位用户自行配置。**图为短生命周期**——一次 Celery 作业内跑完即结束，不启用 checkpointer，也不使用跨请求的 `interrupt` / `Command(resume)`。流程状态与等待用户的节点由 seekdb 持久化，用户下一次确认是一次新作业，重新读取当前业务版本重新构图执行；这比 checkpoint 恢复更严格，因为它强制重新校验业务版本而不是复用旧快照。Celery 负责后台执行，Pydantic 与业务模块负责输出和变更校验。不建设通用 Agent 平台，也不采用框架的预制 agent 循环与记忆/检索组件。选型理由与被排除的替代方案见 [RFC 0001](../rfcs/0001-adopt-langchain-langgraph.md)。
+编排与模型接入已确认：Agent 步骤实现为 LangGraph `StateGraph`，模型通过 LangChain 统一 chat model 抽象接入，provider 范围为 OpenAI 与 Anthropic（PRD D08），供应商与模型由每位用户自行配置。**图为短生命周期**——一次 Celery 作业内跑完即结束，不启用 checkpointer，也不使用跨请求的 `interrupt` / `Command(resume)`。流程状态与等待用户的节点由数据库持久化，用户下一次确认是一次新作业，重新读取当前业务版本重新构图执行；这比 checkpoint 恢复更严格，因为它强制重新校验业务版本而不是复用旧快照。Celery 负责后台执行，Pydantic 与业务模块负责输出和变更校验。不建设通用 Agent 平台，也不采用框架的预制 agent 循环与记忆/检索组件。选型理由与被排除的替代方案见 [RFC 0001](../rfcs/0001-adopt-langchain-langgraph.md)。
 
 ## Agent 与确定性规则
 
@@ -52,11 +52,17 @@
 
 实体划分为账号与目标、计划与任务版本、时间预算与每日安排、执行与材料、后台作业与审计五组。**表名、字段与约束的事实源是 [核心数据模型](03-data-model.md)**，本文不再并列一份表清单——两份清单一定会发散。
 
-seekdb 为业务事实来源。关联、日期、状态和归属使用关系字段；领域扩展字段与模型输出快照采用经目标版本验证的 JSON 存储，并带结构版本，不使用 PostgreSQL 专属 JSONB 类型或语法。历史计划版本和执行记录不随重排覆盖。首版可按目标档案、当前计划、近期记录与会话摘要组织上下文；未来可评估 seekdb 自带的向量与全文检索，无需现在增加语义检索范围。
+SQLite 库文件为业务事实来源。关联、日期、状态和归属使用关系字段；领域扩展字段与模型输出快照存为 TEXT，写入前用 `json()` 校验并带结构版本，查询用 `json_extract`，不使用 PostgreSQL 专属 JSONB 类型或语法。历史计划版本和执行记录不随重排覆盖。首版可按目标档案、当前计划、近期记录与会话摘要组织上下文；未来要做语义检索时由 sqlite-vec 扩展（向量，T01 G3 已验证可加载）与内置 FTS5（全文）承载，与业务表同文件、同备份，**无需现在增加语义检索范围**。
 
-建议以独立 Server 模式供 API 和 Worker 共同连接，嵌入式模式仅作为可能的实验用途，不作为多进程正式部署默认值。官方说明支持 MySQL 协议、ACID 及 SQLAlchemy/MySQL 驱动接入；SQLAlchemy 2 + Alembic 保留，优先验证 MySQL 方言与 PyMySQL 驱动。连接支持不等于全部迁移操作已兼容，不能仅据 MySQL 兼容声明跳过测试。
+SQLAlchemy 2 + Alembic 保留，方言为 `sqlite+pysqlite`，没有第三方驱动。连接装配有三条不能省的设置，漏掉任何一条都不会报错，保护却已经消失：
 
-数据层实现前锁定 seekdb 版本，验证事务提交/回滚、唯一约束、并发条件更新、行锁及隔离行为、JSON、索引和时间类型、SQLAlchemy 反射及 Alembic 建表/升级。DDL 回滚和 SKIP LOCKED 等行为不预设支持。作业抢占与 outbox 按验证结果选择实现。另验证备份恢复和多用户并发预算更新。当前仅完成官方文档核对，未运行数据库实例或兼容性测试。逐项用例、判定与替代实现见 [T01 交接卡](../worklog/T01-seekdb-verification.md)；目标版本在该轮验证通过后由具体版本号与镜像摘要写死。
+- **每条连接**重设 `foreign_keys=ON`、`busy_timeout`、`synchronous`。它们是连接级设置，不写进库文件；`journal_mode=WAL` 是库级的，写进文件后持久生效。
+- 关掉 pysqlite 的隐式事务管理（`isolation_level=None`），否则拿不到事务性 DDL，也无法自己控制事务开始方式。
+- 写事务一律 `BEGIN IMMEDIATE`。`BEGIN DEFERRED` 在写第一行时才升级写锁，升级冲突**不受 `busy_timeout` 保护、也无法靠等待解决**。
+
+迁移必须启用 Alembic batch 模式（`render_as_batch=True`）：SQLite 的 `ALTER TABLE` 只支持有限操作，改列类型或约束都要重建表。重建路径最危险的失败模式是漏列静默丢数据，契约 PR 的 review 要逐列核对。
+
+数据库行为已由 T01 逐项实测，结论与替代实现见 [T01 交接卡](../worklog/T01-sqlite-verification.md)。要点：复合唯一约束、CHECK、部分唯一索引、事务性 DDL、`VACUUM INTO` 在线备份与恢复演练均可用；条件更新的影响行数按**匹配**计数，不存在 MySQL `CLIENT_FOUND_ROWS` 那类需要固定语义的陷阱；`FOR UPDATE` 与 `SKIP LOCKED` 不支持，作业抢占改用租约式条件更新；类型靠亲和性而非校验，字段类型正确由 SQLAlchemy 类型层与 Pydantic 负责。多进程并发写在库级别串行，靠带退避的有限重试恢复，已验证不产生不可恢复的 `SQLITE_BUSY`。
 
 Redis 负责队列传递，不作为唯一业务记录。采用事务内作业记录与 outbox，分发器重试投递；投递成功但标记失败可能重复发送，因此 Worker 必须基于作业 ID、状态锁定和唯一约束防止重复提交业务结果。定期检查失联作业，有限重试，保留错误状态。无法保证外部模型调用只收费一次，需区分业务提交幂等与供应商请求幂等。
 
@@ -87,4 +93,8 @@ Redis 负责队列传递，不作为唯一业务记录。采用事务内作业�
 - [Celery Redis 队列](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html)
 - [LangGraph 图 API](https://docs.langchain.com/oss/python/langgraph/graph-api)
 - [LangChain chat model 与 `init_chat_model`](https://docs.langchain.com/oss/python/langchain/models)
-- [seekdb 官方仓库及 SQL/Python 接入说明](https://github.com/oceanbase/seekdb)
+- [SQLite 事务与 BEGIN 模式](https://www.sqlite.org/lang_transaction.html)
+- [SQLite WAL 模式](https://www.sqlite.org/wal.html)
+- [SQLAlchemy pysqlite 方言与事务处理注意事项](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#pysqlite-serializable)
+- [Alembic batch 模式（SQLite 表重建）](https://alembic.sqlalchemy.org/en/latest/batch.html)
+- [sqlite-vec](https://github.com/asg017/sqlite-vec)

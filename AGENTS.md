@@ -6,7 +6,7 @@
 
 ## 项目状态
 
-产品与开发设计已完成并可评审，**应用代码尚未开始实现**。seekdb 兼容性未验证，无任何迁移已生成。
+产品与开发设计已完成并可评审，**业务代码尚未开始实现**。数据库行为已在 SQLite 上验证（T01），无任何迁移已生成。
 
 不要假设仓库里存在尚未创建的目录、模块或接口。当前只有文档和工程规范。
 
@@ -58,9 +58,11 @@ scripts/                统一门禁脚本
 
 ## 技术基线（已确认）
 
-前端 React + TypeScript + Vite + shadcn/ui；后端 Python 3.11+ + FastAPI；数据库 seekdb；数据访问与迁移 SQLAlchemy + Alembic；后台任务 Celery + Redis + Beat；作业事件 SSE；部署 Docker Compose + Nginx。
+前端 React + TypeScript + Vite + shadcn/ui；后端 Python 3.11+ + FastAPI；数据库 SQLite（单文件，WAL 模式，驱动为标准库 `sqlite3`）；数据访问与迁移 SQLAlchemy + Alembic，迁移启用 batch 模式；后台任务 Celery + Redis + Beat；作业事件 SSE；部署 Docker Compose + Nginx。
 
-Agent 编排采用 LangGraph，模型接入采用 LangChain（`langchain-openai` / `langchain-anthropic`），支持 OpenAI 与 Anthropic 两个 provider。**图为短生命周期：一次作业内跑完即结束，不启用 checkpointer。** 等待用户、版本校验、预算与计划变更判级仍在 seekdb 业务表和业务模块，不下放给框架。不使用 `create_agent` 预制循环、LangChain memory / retriever / vectorstore，也不把数据库写入包装成模型可调用的 tool。LangSmith 追踪默认关闭。首版前端不引入 Redux / Zustand。
+数据库为单文件库，**API、Worker、Beat 必须运行在同一主机、访问同一本地文件系统上的同一个库文件，且该文件不得置于 NFS / SMB 等网络文件系统**——SQLite 的锁依赖 POSIX 文件锁语义，网络文件系统上会静默损坏数据。写事务一律 `BEGIN IMMEDIATE`；`foreign_keys`、`busy_timeout` 是连接级设置，每条连接都要重设。向量能力由 sqlite-vec 扩展承载、全文检索由内置 FTS5 承载，**首版均不启用**。选型理由与被排除的替代方案见 [RFC 0003](docs/rfcs/0003-sqlite-as-primary-store.md)。
+
+Agent 编排采用 LangGraph，模型接入采用 LangChain（`langchain-openai` / `langchain-anthropic`），支持 OpenAI 与 Anthropic 两个 provider。**图为短生命周期：一次作业内跑完即结束，不启用 checkpointer。** 等待用户、版本校验、预算与计划变更判级仍在数据库业务表和业务模块，不下放给框架。不使用 `create_agent` 预制循环、LangChain memory / retriever / vectorstore，也不把数据库写入包装成模型可调用的 tool。LangSmith 追踪默认关闭。首版前端不引入 Redux / Zustand。
 
 包管理：后端 `uv`，前端 `pnpm`。锁文件必须提交。
 
@@ -109,7 +111,7 @@ pytest（`test_*.py` / `test_*`）与 Vitest + Testing Library。测试必须保
 
 重点覆盖真实规则：数据库事务与回滚、版本竞争（`expected_revision`）、时间预算冲突、任务依赖与环检测、用户数据隔离、模型调用异常与恢复。
 
-数据库验收使用真实 seekdb，**不允许用 SQLite 通过的结果代替**。文案或低影响样式改动不需要补镜像测试。
+数据库验收必须使用**与生产同构的 SQLite 配置**：同一组 pragma、WAL、真实库文件。**不允许用默认配置或 `:memory:` 内存库通过的结果代替**——`foreign_keys` 默认关闭、`busy_timeout` 默认为 0，漏设不会报错，用宽松环境跑出来的"通过"什么都不说明。文案或低影响样式改动不需要补镜像测试。
 
 详见 [代码与测试规范](docs/engineering/03-code-and-test-standards.md)。
 
