@@ -44,3 +44,4 @@
 | 0000 | 模板 | — |
 | [0001](0001-adopt-langchain-langgraph.md) | 首版 Agent 编排与模型接入改用 LangChain + LangGraph | 已接受 |
 | [0002](0002-contract-pr-gate.md) | 修正契约 PR 门禁与 OpenAPI 生成流程的冲突 | 已接受 |
+| [0003](0003-sqlite-as-primary-store.md) | 首版业务数据库由 seekdb 改为 SQLite，向量能力由 sqlite-vec 承载 | 草案 |
