@@ -836,6 +836,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列举当前用户的模型配置
+         * @description 返回当前用户未删除的全部配置，含已禁用（enabled=false，供重新启用）；已删除（归档）配置不出现在列表中（决策 A4/A12）。
+         */
+        get: operations["list_model_configs_api_model_configs_get"];
+        put?: never;
+        /**
+         * 创建个人模型配置
+         * @description 创建当前用户的模型配置，返回脱敏元数据。凭证信封加密入库（主密钥由部署环境提供，T14 决策 A10）；openai 必须指定 api_mode，anthropic 必须为空（决策 A3）。
+         */
+        post: operations["create_model_config_api_model_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-configs/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 设置默认模型配置
+         * @description 指定当前用户有效配置为默认；旧默认在同一写事务内让位，每用户至多一个默认（DB 部分唯一索引兜底，决策 A2）。已禁用或已删除的配置不能设为默认（409）。
+         */
+        put: operations["set_default_model_config_api_model_configs_default_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 删除个人模型配置
+         * @description 归档式删除（与 PATCH 的禁用不同，删除不可恢复）：deleted_at 置时间戳、enabled=0、凭证与密钥版本清空、默认标记清除，行保留以支撑作业所需的非敏感历史信息（07 号接口建议；决策 A4）。归档配置后续一律按 404 处理，已发出的模型请求无法通过删除收回，但后续重试会检查删除状态。删除默认配置时前端提示重新选择。
+         */
+        delete: operations["delete_model_config_api_model_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * 修改个人模型配置
+         * @description 带 expected_revision 乐观锁修改；版本不匹配返回 REVISION_CONFLICT。provider 不可修改；api_mode 修改视为配置版本变化（决策 A3）。api_key 缺省 = 保持原值（决策 A5）；enabled=false 禁用但保留凭证、可重新启用（决策 A12）。
+         */
+        patch: operations["update_model_config_api_model_configs__config_id__patch"];
+        trace?: never;
+    };
+    "/api/model-configs/{config_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 测试个人模型配置
+         * @description 显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与脱敏错误分类（决策 A7/A8）；频控仅作滥用兜底，阈值放宽至每用户 1000 次/15 分钟，正常使用不可触达（决策 A14）。
+         */
+        post: operations["test_model_config_api_model_configs__config_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1055,6 +1143,15 @@ export interface components {
              */
             expected_revision: number;
         };
+        /**
+         * CapabilityState
+         * @description 模型能力的三态记录（07 号文档第 1 节）。
+         *
+         *     LangChain 在部分 provider 上用提示工程模拟结构化输出，这种情况记为
+         *     unsupported 而不是 supported——不伪报原生能力。
+         * @enum {string}
+         */
+        CapabilityState: "supported" | "unsupported" | "unknown";
         /**
          * CapacityBasis
          * @description 当日容量的额度口径（13 号第 1 节 capacity_summary 的"额度来源"，取值为 T05 决策 A9）。
@@ -1278,6 +1375,39 @@ export interface components {
             title: string;
         };
         /**
+         * CreateModelConfigRequest
+         * @description 创建个人配置。凭证加密入库，任何响应不回传（T14 决策 A5/A10）。
+         *
+         *     本地无鉴权模型可不填 Key（产品 06 号第 2 节，T14 决策 A11）；是否必填由
+         *     provider 与服务形态决定，业务实现按出站策略与 provider 要求校验。
+         */
+        CreateModelConfigRequest: {
+            /**
+             * Api Key
+             * @description 供应商 API Key；信封加密后入库。本地无鉴权模型可不填（决策 A11）；显式空串被拒
+             */
+            api_key?: string | null;
+            /** @description 仅 openai 有效：responses / chat_completions；anthropic 必须为空（DB CHECK 兜底） */
+            api_mode?: components["schemas"]["ModelApiMode"] | null;
+            /**
+             * Base Url
+             * @description 自定义服务地址；缺省或 null 表示 provider 官方默认端点。非官方地址受实例出站策略约束
+             */
+            base_url?: string | null;
+            /**
+             * Model Id
+             * @description 供应商模型名，如 claude-sonnet-4
+             */
+            model_id: string;
+            /** @description 供应商（D08 已确认双 provider）；创建后不可修改 */
+            model_provider: components["schemas"]["ModelProvider"];
+            /**
+             * Name
+             * @description 用户可见的配置名称
+             */
+            name: string;
+        };
+        /**
          * CriterionConfirmation
          * @description 结束目标时对单条成功标准的确认。快照整体写入 goals.closure_criteria_snapshot_json（T04 决策 A8）。
          */
@@ -1352,6 +1482,11 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
+        /**
+         * DeleteModelConfigRequest
+         * @description 删除（归档）配置。凭证删除后不可恢复；默认配置失效时前端提示重新选择。
+         */
+        DeleteModelConfigRequest: Record<string, never>;
         /**
          * DependencyCheckStatus
          * @description 暂停响应中跨目标依赖影响的检查标记（T04 决策 A12）。
@@ -1483,7 +1618,7 @@ export interface components {
          * @description 对外错误码。
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_IDENTIFIER_UNAVAILABLE" | "REGISTRATION_CLOSED" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE" | "GOAL_STATE_CONFLICT";
+        ErrorCode: "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR" | "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_IDENTIFIER_UNAVAILABLE" | "REGISTRATION_CLOSED" | "IDEMPOTENCY_KEY_CONFLICT" | "REVISION_CONFLICT" | "BUDGET_CONFLICT" | "DEPENDENCY_CYCLE" | "CONFIRMATION_REQUIRED" | "INPUT_STALE" | "MODEL_UNAVAILABLE" | "GOAL_STATE_CONFLICT" | "MODEL_ENDPOINT_NOT_ALLOWED";
         /**
          * ErrorResponse
          * @description 所有 API 错误的唯一响应体。各模块不得自定义错误体。
@@ -1874,6 +2009,149 @@ export interface components {
              * Format: password
              */
             password: string;
+        };
+        /**
+         * ModelApiMode
+         * @description OpenAI 系供应商的 API 形态（07 号文档第 2 节）。
+         *
+         *     仅 model_provider=openai 时有效，映射 langchain-openai 的 use_responses_api；
+         *     anthropic 下必须为空，DB CHECK 强制该组合（T14 决策 A3）。
+         * @enum {string}
+         */
+        ModelApiMode: "responses" | "chat_completions";
+        /**
+         * ModelCapabilities
+         * @description 能力三态记录（07 号第 1 节；T14 决策 A8）。
+         *
+         *     LangChain 用提示工程模拟结构化输出的组合记 unsupported，不伪报原生能力。
+         */
+        ModelCapabilities: {
+            /** @description 基本生成；能力门槛的最低项 */
+            basic_generation: components["schemas"]["CapabilityState"];
+            /** @description 流式输出；不可用时前端显示等待后完整返回 */
+            streaming: components["schemas"]["CapabilityState"];
+            /** @description 原生 schema 结构化输出 */
+            structured_output: components["schemas"]["CapabilityState"];
+        };
+        /**
+         * ModelConfigResponse
+         * @description 个人配置的脱敏元数据。响应不包含任何凭证材料（T14 决策 A5）。
+         */
+        ModelConfigResponse: {
+            /** @description 仅 openai 配置非空 */
+            api_mode: components["schemas"]["ModelApiMode"] | null;
+            /**
+             * Base Url
+             * @description 自定义服务地址；null 表示官方默认端点
+             */
+            base_url: string | null;
+            /** @description 最近一次测试的能力记录；从未测试为 null */
+            capabilities: components["schemas"]["ModelCapabilities"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Enabled
+             * @description false 表示已删除（归档行保留以支撑作业历史）
+             */
+            enabled: boolean;
+            /**
+             * Has Credential
+             * @description 是否持有凭证；凭证材料本身绝不出现在响应中
+             */
+            has_credential: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Is Default
+             * @description 是否为当前用户默认配置；每用户至多一个
+             */
+            is_default: boolean;
+            /**
+             * Last Test At
+             * @description 最近一次测试时间；从未测试为 null
+             */
+            last_test_at: string | null;
+            /**
+             * Model Id
+             * @description 供应商模型名
+             */
+            model_id: string;
+            model_provider: components["schemas"]["ModelProvider"];
+            /** Name */
+            name: string;
+            /**
+             * Revision
+             * @description 配置版本；api_mode 等修改会递增
+             */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ModelProvider
+         * @description 模型供应商（PRD D08 已确认双 provider）。
+         *
+         *     取值直接作为 init_chat_model 的 model_provider 传入（07 号文档第 1 节）。
+         *     禁止根据模型名称猜测 provider；配置上写哪个就是哪个。
+         * @enum {string}
+         */
+        ModelProvider: "openai" | "anthropic";
+        /**
+         * ModelTestError
+         * @description 测试失败信息。供应商原始错误脱敏后只保留分类与说明（07 号第 1 节）。
+         */
+        ModelTestError: {
+            /** @description 错误分类：鉴权/路径/限流/网络/协议 */
+            kind: components["schemas"]["ModelTestErrorKind"];
+            /**
+             * Message
+             * @description 脱敏后的错误说明；不含供应商原始细节与凭证片段
+             */
+            message: string;
+        };
+        /**
+         * ModelTestErrorKind
+         * @description 连通性测试失败的错误分类（07 号文档第 1 节）。
+         *
+         *     供应商原始错误信息脱敏后才进入响应，这里只保留定位所需的分类：
+         *     鉴权/权限、路径/模型、限流、网络与响应协议五类。
+         * @enum {string}
+         */
+        ModelTestErrorKind: "auth" | "model_not_found" | "rate_limited" | "network" | "protocol";
+        /**
+         * ModelTestOutcome
+         * @description 连通性测试的总体结果（T14 决策 A7：结果在 200 响应体返回，不抛 MODEL_UNAVAILABLE）。
+         * @enum {string}
+         */
+        ModelTestOutcome: "succeeded" | "failed";
+        /**
+         * ModelTestResponse
+         * @description 连通性测试结果。失败也走 200 响应体，不抛 MODEL_UNAVAILABLE（T14 决策 A7）。
+         */
+        ModelTestResponse: {
+            /** @description 测试得出的能力记录；失败时可能为 null */
+            capabilities: components["schemas"]["ModelCapabilities"] | null;
+            /** Config Id */
+            config_id: string;
+            /**
+             * Config Revision
+             * @description 测试所依据的配置版本；与当前 revision 不一致说明测试期间配置被修改
+             */
+            config_revision: number;
+            /** @description 失败时的分类与脱敏说明；成功为 null */
+            error: components["schemas"]["ModelTestError"] | null;
+            outcome: components["schemas"]["ModelTestOutcome"];
+            /**
+             * Tested At
+             * Format: date-time
+             */
+            tested_at: string;
         };
         /**
          * OverrideDayRequest
@@ -2423,6 +2701,17 @@ export interface components {
             expires_at: string;
         };
         /**
+         * SetDefaultModelConfigRequest
+         * @description 指定当前用户的默认配置。旧默认在同一事务内让位（每用户至多一个默认）。
+         */
+        SetDefaultModelConfigRequest: {
+            /**
+             * Config Id
+             * @description 要设为默认的配置；必须属于当前用户且未删除
+             */
+            config_id: string;
+        };
+        /**
          * TaskConstraintResponse
          * @description 单日任务约束的保存结果（05-module-contracts constrain_today_task）。
          */
@@ -2486,6 +2775,11 @@ export interface components {
          * @enum {string}
          */
         TaskExecutor: "user" | "agent" | "collaborative";
+        /**
+         * TestModelConfigRequest
+         * @description 触发连通性测试。固定无私人内容短提示，频控与超时由服务端约束（决策 A7）。
+         */
+        TestModelConfigRequest: Record<string, never>;
         /** UndoClosureRequest */
         UndoClosureRequest: {
             /**
@@ -2569,6 +2863,48 @@ export interface components {
             minimum_minutes?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * UpdateModelConfigRequest
+         * @description 修改配置。provider 不可修改（换 provider 新建配置，T14 决策 A3）。
+         *
+         *     字段缺省表示不变；base_url 显式 null 表示清除自定义地址、回到官方默认端点。
+         *     api_key 缺省 = 保持原值，显式空串被拒——不存在掩码回显覆盖路径（决策 A5）。
+         *     禁用（enabled=false）保留凭证、可重新启用；删除走 DELETE（决策 A12）。
+         */
+        UpdateModelConfigRequest: {
+            /**
+             * Api Key
+             * @description 替换凭证；缺省或 null 表示保持原值，显式空串被拒（422）
+             */
+            api_key?: string | null;
+            /** @description 仅 openai 配置可修改；修改视为配置版本变化（决策 A3）。anthropic 配置提交非空值被拒 */
+            api_mode?: components["schemas"]["ModelApiMode"] | null;
+            /**
+             * Base Url
+             * @description 显式 null 清除自定义地址；字段缺省表示不变（业务实现以字段提交状态区分）
+             */
+            base_url?: string | null;
+            /**
+             * Enabled
+             * @description 缺省表示不变；false 禁用（凭证保留、可重新启用，06 号：支持替换、禁用和删除）。已删除配置按 404 处理，不能经此端点恢复
+             */
+            enabled?: boolean | null;
+            /**
+             * Expected Revision
+             * @description 乐观锁：当前配置版本；不匹配返回 REVISION_CONFLICT
+             */
+            expected_revision: number;
+            /**
+             * Model Id
+             * @description 缺省表示不变
+             */
+            model_id?: string | null;
+            /**
+             * Name
+             * @description 缺省表示不变
+             */
+            name?: string | null;
         };
         /** UpdateProfileDraftRequest */
         UpdateProfileDraftRequest: {
@@ -5418,6 +5754,431 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_model_configs_api_model_configs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigResponse"][];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_model_config_api_model_configs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateModelConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅 PUT default） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_default_model_config_api_model_configs_default_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDefaultModelConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅 PUT default） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_model_config_api_model_configs__config_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 模型配置 ID */
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteModelConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅 PUT default） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_model_config_api_model_configs__config_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 模型配置 ID */
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateModelConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfigResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅 PUT default） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_model_config_api_model_configs__config_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 模型配置 ID */
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestModelConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelTestResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 测试调用频率超限（RATE_LIMITED） */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 服务内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -45,6 +45,11 @@ class ErrorCode(StrEnum):
     # 与 VALIDATION_FAILED 分开：请求本身格式正确，被拒的是当前状态下的这次操作。
     GOAL_STATE_CONFLICT = "GOAL_STATE_CONFLICT"
 
+    # —— 个人模型配置（T14 交接卡决策 A6）——
+    # 自定义 base_url 被实例出站策略拒绝（内网/云元数据黑名单、未开放本地端点等）。
+    # 校验在 base_url 交给 LangChain 之前执行，框架不提供该保护（07 号文档"自定义地址"节）。
+    MODEL_ENDPOINT_NOT_ALLOWED = "MODEL_ENDPOINT_NOT_ALLOWED"
+
 
 HTTP_STATUS_BY_ERROR_CODE: dict[ErrorCode, int] = {
     ErrorCode.VALIDATION_FAILED: 422,
@@ -64,6 +69,7 @@ HTTP_STATUS_BY_ERROR_CODE: dict[ErrorCode, int] = {
     ErrorCode.INPUT_STALE: 409,
     ErrorCode.MODEL_UNAVAILABLE: 503,
     ErrorCode.GOAL_STATE_CONFLICT: 409,
+    ErrorCode.MODEL_ENDPOINT_NOT_ALLOWED: 403,
 }
 
 # 可重试指的是"原样重试有意义"。版本冲突与预算冲突需要用户先看到新状态再决定，

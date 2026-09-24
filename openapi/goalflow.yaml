@@ -282,6 +282,19 @@ components:
       - expected_revision
       title: CancelJobRequest
       type: object
+    CapabilityState:
+      description: '模型能力的三态记录（07 号文档第 1 节）。
+
+
+        LangChain 在部分 provider 上用提示工程模拟结构化输出，这种情况记为
+
+        unsupported 而不是 supported——不伪报原生能力。'
+      enum:
+      - supported
+      - unsupported
+      - unknown
+      title: CapabilityState
+      type: string
     CapacityBasis:
       description: '当日容量的额度口径（13 号第 1 节 capacity_summary 的"额度来源"，取值为 T05 决策 A9）。
 
@@ -590,6 +603,55 @@ components:
       - title
       title: CreateGoalRequest
       type: object
+    CreateModelConfigRequest:
+      description: '创建个人配置。凭证加密入库，任何响应不回传（T14 决策 A5/A10）。
+
+
+        本地无鉴权模型可不填 Key（产品 06 号第 2 节，T14 决策 A11）；是否必填由
+
+        provider 与服务形态决定，业务实现按出站策略与 provider 要求校验。'
+      properties:
+        api_key:
+          anyOf:
+          - maxLength: 4096
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: 供应商 API Key；信封加密后入库。本地无鉴权模型可不填（决策 A11）；显式空串被拒
+          title: Api Key
+        api_mode:
+          anyOf:
+          - $ref: '#/components/schemas/ModelApiMode'
+          - type: 'null'
+          description: 仅 openai 有效：responses / chat_completions；anthropic 必须为空（DB CHECK 兜底）
+        base_url:
+          anyOf:
+          - maxLength: 500
+            type: string
+          - type: 'null'
+          description: 自定义服务地址；缺省或 null 表示 provider 官方默认端点。非官方地址受实例出站策略约束
+          title: Base Url
+        model_id:
+          description: 供应商模型名，如 claude-sonnet-4
+          maxLength: 128
+          minLength: 1
+          title: Model Id
+          type: string
+        model_provider:
+          $ref: '#/components/schemas/ModelProvider'
+          description: 供应商（D08 已确认双 provider）；创建后不可修改
+        name:
+          description: 用户可见的配置名称
+          maxLength: 100
+          minLength: 1
+          title: Name
+          type: string
+      required:
+      - name
+      - model_provider
+      - model_id
+      title: CreateModelConfigRequest
+      type: object
     CriterionConfirmation:
       description: 结束目标时对单条成功标准的确认。快照整体写入 goals.closure_criteria_snapshot_json（T04 决策 A8）。
       properties:
@@ -680,6 +742,11 @@ components:
       - task_id
       - reason_code
       title: DeferredTaskView
+      type: object
+    DeleteModelConfigRequest:
+      description: 删除（归档）配置。凭证删除后不可恢复；默认配置失效时前端提示重新选择。
+      properties: {}
+      title: DeleteModelConfigRequest
       type: object
     DependencyCheckStatus:
       description: '暂停响应中跨目标依赖影响的检查标记（T04 决策 A12）。
@@ -866,6 +933,7 @@ components:
       - INPUT_STALE
       - MODEL_UNAVAILABLE
       - GOAL_STATE_CONFLICT
+      - MODEL_ENDPOINT_NOT_ALLOWED
       title: ErrorCode
       type: string
     ErrorResponse:
@@ -1442,6 +1510,202 @@ components:
       - account_identifier
       - password
       title: LoginRequest
+      type: object
+    ModelApiMode:
+      description: 'OpenAI 系供应商的 API 形态（07 号文档第 2 节）。
+
+
+        仅 model_provider=openai 时有效，映射 langchain-openai 的 use_responses_api；
+
+        anthropic 下必须为空，DB CHECK 强制该组合（T14 决策 A3）。'
+      enum:
+      - responses
+      - chat_completions
+      title: ModelApiMode
+      type: string
+    ModelCapabilities:
+      description: '能力三态记录（07 号第 1 节；T14 决策 A8）。
+
+
+        LangChain 用提示工程模拟结构化输出的组合记 unsupported，不伪报原生能力。'
+      properties:
+        basic_generation:
+          $ref: '#/components/schemas/CapabilityState'
+          description: 基本生成；能力门槛的最低项
+        streaming:
+          $ref: '#/components/schemas/CapabilityState'
+          description: 流式输出；不可用时前端显示等待后完整返回
+        structured_output:
+          $ref: '#/components/schemas/CapabilityState'
+          description: 原生 schema 结构化输出
+      required:
+      - basic_generation
+      - structured_output
+      - streaming
+      title: ModelCapabilities
+      type: object
+    ModelConfigResponse:
+      description: 个人配置的脱敏元数据。响应不包含任何凭证材料（T14 决策 A5）。
+      properties:
+        api_mode:
+          anyOf:
+          - $ref: '#/components/schemas/ModelApiMode'
+          - type: 'null'
+          description: 仅 openai 配置非空
+        base_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 自定义服务地址；null 表示官方默认端点
+          title: Base Url
+        capabilities:
+          anyOf:
+          - $ref: '#/components/schemas/ModelCapabilities'
+          - type: 'null'
+          description: 最近一次测试的能力记录；从未测试为 null
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        enabled:
+          description: false 表示已删除（归档行保留以支撑作业历史）
+          title: Enabled
+          type: boolean
+        has_credential:
+          description: 是否持有凭证；凭证材料本身绝不出现在响应中
+          title: Has Credential
+          type: boolean
+        id:
+          title: Id
+          type: string
+        is_default:
+          description: 是否为当前用户默认配置；每用户至多一个
+          title: Is Default
+          type: boolean
+        last_test_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: 最近一次测试时间；从未测试为 null
+          title: Last Test At
+        model_id:
+          description: 供应商模型名
+          title: Model Id
+          type: string
+        model_provider:
+          $ref: '#/components/schemas/ModelProvider'
+        name:
+          title: Name
+          type: string
+        revision:
+          description: 配置版本；api_mode 等修改会递增
+          title: Revision
+          type: integer
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - id
+      - name
+      - model_provider
+      - api_mode
+      - base_url
+      - model_id
+      - revision
+      - enabled
+      - is_default
+      - has_credential
+      - capabilities
+      - last_test_at
+      - created_at
+      - updated_at
+      title: ModelConfigResponse
+      type: object
+    ModelProvider:
+      description: '模型供应商（PRD D08 已确认双 provider）。
+
+
+        取值直接作为 init_chat_model 的 model_provider 传入（07 号文档第 1 节）。
+
+        禁止根据模型名称猜测 provider；配置上写哪个就是哪个。'
+      enum:
+      - openai
+      - anthropic
+      title: ModelProvider
+      type: string
+    ModelTestError:
+      description: 测试失败信息。供应商原始错误脱敏后只保留分类与说明（07 号第 1 节）。
+      properties:
+        kind:
+          $ref: '#/components/schemas/ModelTestErrorKind'
+          description: 错误分类：鉴权/路径/限流/网络/协议
+        message:
+          description: 脱敏后的错误说明；不含供应商原始细节与凭证片段
+          title: Message
+          type: string
+      required:
+      - kind
+      - message
+      title: ModelTestError
+      type: object
+    ModelTestErrorKind:
+      description: '连通性测试失败的错误分类（07 号文档第 1 节）。
+
+
+        供应商原始错误信息脱敏后才进入响应，这里只保留定位所需的分类：
+
+        鉴权/权限、路径/模型、限流、网络与响应协议五类。'
+      enum:
+      - auth
+      - model_not_found
+      - rate_limited
+      - network
+      - protocol
+      title: ModelTestErrorKind
+      type: string
+    ModelTestOutcome:
+      description: 连通性测试的总体结果（T14 决策 A7：结果在 200 响应体返回，不抛 MODEL_UNAVAILABLE）。
+      enum:
+      - succeeded
+      - failed
+      title: ModelTestOutcome
+      type: string
+    ModelTestResponse:
+      description: 连通性测试结果。失败也走 200 响应体，不抛 MODEL_UNAVAILABLE（T14 决策 A7）。
+      properties:
+        capabilities:
+          anyOf:
+          - $ref: '#/components/schemas/ModelCapabilities'
+          - type: 'null'
+          description: 测试得出的能力记录；失败时可能为 null
+        config_id:
+          title: Config Id
+          type: string
+        config_revision:
+          description: 测试所依据的配置版本；与当前 revision 不一致说明测试期间配置被修改
+          title: Config Revision
+          type: integer
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/ModelTestError'
+          - type: 'null'
+          description: 失败时的分类与脱敏说明；成功为 null
+        outcome:
+          $ref: '#/components/schemas/ModelTestOutcome'
+        tested_at:
+          format: date-time
+          title: Tested At
+          type: string
+      required:
+      - config_id
+      - config_revision
+      - outcome
+      - capabilities
+      - error
+      - tested_at
+      title: ModelTestResponse
       type: object
     OverrideDayRequest:
       description: 声明单日额度（05-module-contracts override_today）。
@@ -2200,6 +2464,18 @@ components:
       - expires_at
       title: SessionInfo
       type: object
+    SetDefaultModelConfigRequest:
+      description: 指定当前用户的默认配置。旧默认在同一事务内让位（每用户至多一个默认）。
+      properties:
+        config_id:
+          description: 要设为默认的配置；必须属于当前用户且未删除
+          maxLength: 36
+          title: Config Id
+          type: string
+      required:
+      - config_id
+      title: SetDefaultModelConfigRequest
+      type: object
     TaskConstraintResponse:
       description: 单日任务约束的保存结果（05-module-contracts constrain_today_task）。
       properties:
@@ -2282,6 +2558,11 @@ components:
       - collaborative
       title: TaskExecutor
       type: string
+    TestModelConfigRequest:
+      description: 触发连通性测试。固定无私人内容短提示，频控与超时由服务端约束（决策 A7）。
+      properties: {}
+      title: TestModelConfigRequest
+      type: object
     UndoClosureRequest:
       properties:
         expected_revision:
@@ -2397,6 +2678,67 @@ components:
       required:
       - expected_revision
       title: UpdateDraftTaskRequest
+      type: object
+    UpdateModelConfigRequest:
+      description: '修改配置。provider 不可修改（换 provider 新建配置，T14 决策 A3）。
+
+
+        字段缺省表示不变；base_url 显式 null 表示清除自定义地址、回到官方默认端点。
+
+        api_key 缺省 = 保持原值，显式空串被拒——不存在掩码回显覆盖路径（决策 A5）。
+
+        禁用（enabled=false）保留凭证、可重新启用；删除走 DELETE（决策 A12）。'
+      properties:
+        api_key:
+          anyOf:
+          - maxLength: 4096
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: 替换凭证；缺省或 null 表示保持原值，显式空串被拒（422）
+          title: Api Key
+        api_mode:
+          anyOf:
+          - $ref: '#/components/schemas/ModelApiMode'
+          - type: 'null'
+          description: 仅 openai 配置可修改；修改视为配置版本变化（决策 A3）。anthropic 配置提交非空值被拒
+        base_url:
+          anyOf:
+          - maxLength: 500
+            type: string
+          - type: 'null'
+          description: 显式 null 清除自定义地址；字段缺省表示不变（业务实现以字段提交状态区分）
+          title: Base Url
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: 缺省表示不变；false 禁用（凭证保留、可重新启用，06 号：支持替换、禁用和删除）。已删除配置按 404 处理，不能经此端点恢复
+          title: Enabled
+        expected_revision:
+          description: 乐观锁：当前配置版本；不匹配返回 REVISION_CONFLICT
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        model_id:
+          anyOf:
+          - maxLength: 128
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: 缺省表示不变
+          title: Model Id
+        name:
+          anyOf:
+          - maxLength: 100
+            minLength: 1
+            type: string
+          - type: 'null'
+          description: 缺省表示不变
+          title: Name
+      required:
+      - expected_revision
+      title: UpdateModelConfigRequest
       type: object
     UpdateProfileDraftRequest:
       properties:
@@ -4894,3 +5236,362 @@ paths:
       summary: 订阅作业事件（SSE）
       tags:
       - jobs
+  /api/model-configs:
+    get:
+      description: 返回当前用户未删除的全部配置，含已禁用（enabled=false，供重新启用）；已删除（归档）配置不出现在列表中（决策 A4/A12）。
+      operationId: list_model_configs_api_model_configs_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ModelConfigResponse'
+                title: Response List Model Configs Api Model Configs Get
+                type: array
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 列举当前用户的模型配置
+      tags:
+      - model-configs
+    post:
+      description: 创建当前用户的模型配置，返回脱敏元数据。凭证信封加密入库（主密钥由部署环境提供，T14 决策 A10）；openai 必须指定 api_mode，anthropic
+        必须为空（决策 A3）。
+      operationId: create_model_config_api_model_configs_post
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelConfigRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行）
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅
+            PUT default）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 创建个人模型配置
+      tags:
+      - model-configs
+  /api/model-configs/default:
+    put:
+      description: 指定当前用户有效配置为默认；旧默认在同一写事务内让位，每用户至多一个默认（DB 部分唯一索引兜底，决策 A2）。已禁用或已删除的配置不能设为默认（409）。
+      operationId: set_default_model_config_api_model_configs_default_put
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetDefaultModelConfigRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行）
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4）
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅
+            PUT default）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 设置默认模型配置
+      tags:
+      - model-configs
+  /api/model-configs/{config_id}:
+    delete:
+      description: 归档式删除（与 PATCH 的禁用不同，删除不可恢复）：deleted_at 置时间戳、enabled=0、凭证与密钥版本清空、默认标记清除，行保留以支撑作业所需的非敏感历史信息（07
+        号接口建议；决策 A4）。归档配置后续一律按 404 处理，已发出的模型请求无法通过删除收回，但后续重试会检查删除状态。删除默认配置时前端提示重新选择。
+      operationId: delete_model_config_api_model_configs__config_id__delete
+      parameters:
+      - description: 模型配置 ID
+        in: path
+        name: config_id
+        required: true
+        schema:
+          description: 模型配置 ID
+          maxLength: 36
+          title: Config Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteModelConfigRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行）
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4）
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅
+            PUT default）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 删除个人模型配置
+      tags:
+      - model-configs
+    patch:
+      description: 带 expected_revision 乐观锁修改；版本不匹配返回 REVISION_CONFLICT。provider 不可修改；api_mode 修改视为配置版本变化（决策
+        A3）。api_key 缺省 = 保持原值（决策 A5）；enabled=false 禁用但保留凭证、可重新启用（决策 A12）。
+      operationId: update_model_config_api_model_configs__config_id__patch
+      parameters:
+      - description: 模型配置 ID
+        in: path
+        name: config_id
+        required: true
+        schema:
+          description: 模型配置 ID
+          maxLength: 36
+          title: Config Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelConfigRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行）
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4）
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、配置版本已变（REVISION_CONFLICT）或配置已禁用/已删除，不能设为默认（仅
+            PUT default）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 修改个人模型配置
+      tags:
+      - model-configs
+  /api/model-configs/{config_id}/test:
+    post:
+      description: 显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与脱敏错误分类（决策
+        A7/A8）；频控仅作滥用兜底，阈值放宽至每用户 1000 次/15 分钟，正常使用不可触达（决策 A14）。
+      operationId: test_model_config_api_model_configs__config_id__test_post
+      parameters:
+      - description: 模型配置 ID
+        in: path
+        name: config_id
+        required: true
+        schema:
+          description: 模型配置 ID
+          maxLength: 36
+          title: Config Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestModelConfigRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelTestResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 测试调用频率超限（RATE_LIMITED）
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 服务内部错误
+      summary: 测试个人模型配置
+      tags:
+      - model-configs

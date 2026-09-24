@@ -21,6 +21,7 @@ import goalflow.goals.models
 import goalflow.idempotency.models  # 注册幂等表
 import goalflow.jobs.models
 import goalflow.links.models
+import goalflow.model_configs.models
 import goalflow.scheduling.models  # noqa: F401  注册排期表
 from goalflow.db.base import Base
 from goalflow.db.engine import create_database_engine
