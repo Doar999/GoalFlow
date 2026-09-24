@@ -261,6 +261,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/change-proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取变更提案
+         * @description 读取提案状态与影响分析；确认或拒绝前用户须能看到完整影响（T06 决策 A7）。
+         */
+        get: operations["read_change_proposal_api_change_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/change-proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 接受变更提案
+         * @description 接受并在同一事务内原子应用：置关联 removed、删除依赖边、处理 criteria_unsatisfiable 的未开始任务、写审计并递增 planning revision（18 号第 3 节）。中途失败两者都不变。
+         */
+        post: operations["accept_change_proposal_api_change_proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/change-proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 拒绝变更提案
+         * @description 拒绝后提案置 rejected，关联与依赖保持原样，问题仍然可见（产品 13 号第 4 节）。
+         */
+        post: operations["reject_change_proposal_api_change_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goal-links/{link_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 确认建立关联
+         * @description proposed → active，并在同一事务内建立依赖边。确认时校验同用户、不自关联、目标对未重复与全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。
+         */
+        post: operations["confirm_goal_link_api_goal_links__link_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goal-links/{link_id}/unlink-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 生成解除提案
+         * @description 计算并返回解除影响：未满足依赖边、后继任务执行状态、criteria_unsatisfiable 标记、受影响的里程碑与期限；已满足边随关联归档（18 号第 3 节）。操作不被未完成依赖阻止。
+         */
+        post: operations["propose_unlink_api_goal_links__link_id__unlink_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/goals": {
         parameters: {
             query?: never;
@@ -392,6 +492,26 @@ export interface paths {
          * @description 复制源目标最新档案内容为新目标的档案草稿，不复制计划、任务与执行记录；源目标保持终态（17 号第 4 节）。
          */
         post: operations["derive_goal_api_goals__goal_id__derivation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/link-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提出目标关联
+         * @description 创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；目标对规范化存储。
+         */
+        post: operations["propose_goal_link_api_goals__goal_id__link_proposals_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -972,6 +1092,15 @@ export interface components {
              */
             spent_minutes: number;
         };
+        /**
+         * ChangeClass
+         * @description 变更提案的判级（03 第 3 节 change_class，取值出处 18 号第 3 节、D04）。
+         *
+         *     本期只含目标关联解除所需的两级；record_only / auto_schedule / auto_plan_local
+         *     归 T12，届时随其契约 PR 扩展 CHECK（T06 决策 A5）。
+         * @enum {string}
+         */
+        ChangeClass: "confirmation_required" | "profile_revision_required";
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /**
@@ -986,6 +1115,49 @@ export interface components {
              */
             new_password: string;
         };
+        /**
+         * ChangeProposalActionRequest
+         * @description 提案终态动作（接受 / 拒绝）。接受和应用在同一事务完成（03 第 3 节）。
+         */
+        ChangeProposalActionRequest: Record<string, never>;
+        /**
+         * ChangeProposalResponse
+         * @description 变更提案。解除关联时 change_class=confirmation_required（改变成功标准时升级，18 号第 3 节）。
+         */
+        ChangeProposalResponse: {
+            /** Accepted At */
+            accepted_at: string | null;
+            /** Applied At */
+            applied_at: string | null;
+            change_class: components["schemas"]["ChangeClass"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Goal Id */
+            goal_id: string;
+            /** Id */
+            id: string;
+            impact: components["schemas"]["UnlinkImpact"];
+            /**
+             * Input Revision
+             * @description 提案生成时的 planning revision；落后于当前值即为 stale（T06 决策 A6）
+             */
+            input_revision: number;
+            /** Reason */
+            reason: string | null;
+            /** @description 提案基础版本已变时为 stale，不沿用旧确认 */
+            status: components["schemas"]["ChangeProposalStatus"];
+        };
+        /**
+         * ChangeProposalStatus
+         * @description 变更提案状态（03 第 3 节 change_proposals.status）。
+         *
+         *     接受和应用在同一事务完成；提案基础版本已变时置 stale。
+         * @enum {string}
+         */
+        ChangeProposalStatus: "pending" | "applied" | "rejected" | "stale";
         /**
          * ChangeProposalView
          * @description 需要用户确认的变更建议（13 号第 6 节 pending change proposal）。
@@ -1038,6 +1210,11 @@ export interface components {
          * @enum {string}
          */
         ClosureKind: "completed" | "stopped";
+        /**
+         * ConfirmGoalLinkRequest
+         * @description 确认建立关联。确认时在同一事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节）。
+         */
+        ConfirmGoalLinkRequest: Record<string, never>;
         /** ConfirmProfileRequest */
         ConfirmProfileRequest: {
             /**
@@ -1177,6 +1354,15 @@ export interface components {
          * @enum {string}
          */
         DependencyCheckStatus: "wired" | "not_wired";
+        /**
+         * DependencyOutcome
+         * @description 任务依赖的满足条件（03 第 3 节 required_outcome；产品 13 号第 3 节）。
+         *
+         *     区分"执行完成"与"验证通过"；健身领域不允许 verification_passed 是应用层
+         *     策略谓词 fitness_dependency_outcome（16 号第 2 节），不在 DB CHECK 里。
+         * @enum {string}
+         */
+        DependencyOutcome: "execution_completed" | "verification_passed";
         /** DeriveGoalRequest */
         DeriveGoalRequest: {
             /**
@@ -1384,6 +1570,49 @@ export interface components {
          * @enum {string}
          */
         GoalKind: "achievement" | "maintenance";
+        /**
+         * GoalLinkResponse
+         * @description 目标关联当前状态。removed 行保留归档（T06 决策 A2）。
+         */
+        GoalLinkResponse: {
+            /**
+             * Confirmed At
+             * @description 确认时间；proposed 阶段为空
+             */
+            confirmed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Goal A Id
+             * @description 规范化目标对的较小 id 一方
+             */
+            goal_a_id: string;
+            /**
+             * Goal B Id
+             * @description 规范化目标对的较大 id 一方
+             */
+            goal_b_id: string;
+            /** Id */
+            id: string;
+            status: components["schemas"]["GoalLinkStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * GoalLinkStatus
+         * @description 目标关联状态（03 第 2 节；18-goal-link-design.md 第 1 节）。
+         *
+         *     没有 inactive——软失效会产生产品规则禁止的"关联已解除但依赖边仍在"的中间状态。
+         *     removed 行保留归档，解除后同一目标对可重新建立（T06 决策 A2）。
+         * @enum {string}
+         */
+        GoalLinkStatus: "proposed" | "active" | "removed";
         /**
          * GoalResponse
          * @description 目标当前状态。生命周期字段的语义见 12-goal-lifecycle.md（D12）。
@@ -1904,6 +2133,27 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /**
+         * ProposeGoalLinkRequest
+         * @description 提出关联。必须携带具体任务关系（18 号第 2 节）。
+         */
+        ProposeGoalLinkRequest: {
+            /**
+             * Dependencies
+             * @description 具体的任务先后依赖边；至少一条。此时仅创建 proposed 关联，确认后才建立依赖边
+             */
+            dependencies: components["schemas"]["TaskDependencyEdge"][];
+            /**
+             * Target Goal Id
+             * @description 关联对方目标；连同路径 goal_id 规范化为目标对
+             */
+            target_goal_id: string;
+        };
+        /**
+         * ProposeUnlinkRequest
+         * @description 生成解除提案及影响分析（18 号第 3 节）。操作本身不被未完成依赖阻止。
+         */
+        ProposeUnlinkRequest: Record<string, never>;
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -2198,6 +2448,24 @@ export interface components {
          */
         TaskDayConstraintKind: "must_do_today" | "locked";
         /**
+         * TaskDependencyEdge
+         * @description 关联携带的一条具体任务依赖（18 号第 2 节：不接受只有两个 goal_id 的"相关"声明）。
+         */
+        TaskDependencyEdge: {
+            /**
+             * Predecessor Task Id
+             * @description 前驱任务（须先完成/通过的一方）
+             */
+            predecessor_task_id: string;
+            /** @description 满足条件：执行完成或验证通过 */
+            required_outcome: components["schemas"]["DependencyOutcome"];
+            /**
+             * Successor Task Id
+             * @description 后继任务
+             */
+            successor_task_id: string;
+        };
+        /**
          * TaskExecutionStatus
          * @description 任务执行状态（03 第 3 节）。
          *
@@ -2218,6 +2486,40 @@ export interface components {
              * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
              */
             expected_revision: number;
+        };
+        /**
+         * UnlinkImpact
+         * @description 解除提案的影响分析（18 号第 3 节）。结构随业务实现细化，首版用说明性键。
+         */
+        UnlinkImpact: {
+            /**
+             * Affected Milestones
+             * @description 受影响的里程碑与期限
+             */
+            affected_milestones: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Criteria Unsatisfiable
+             * @description 完成标准引用了前驱产出、解除后将不可执行的后继任务
+             */
+            criteria_unsatisfiable: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Satisfied Edges
+             * @description 已满足的依赖边；随关联归档，无需处理
+             */
+            satisfied_edges: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Unsatisfied Edges
+             * @description 该关联下未满足的依赖边清单，每条含后继任务及其当前执行状态
+             */
+            unsatisfied_edges: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * UpdateAvailabilityRequest
@@ -3003,6 +3305,388 @@ export interface operations {
             };
         };
     };
+    read_change_proposal_api_change_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 关联或提案 ID */
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeProposalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_change_proposal_api_change_proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 关联或提案 ID */
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeProposalActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeProposalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reject_change_proposal_api_change_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 关联或提案 ID */
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeProposalActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeProposalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_goal_link_api_goal_links__link_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 关联或提案 ID */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmGoalLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalLinkResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_unlink_api_goal_links__link_id__unlink_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 关联或提案 ID */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeUnlinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeProposalResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     create_goal_api_goals_post: {
         parameters: {
             query?: never;
@@ -3473,6 +4157,89 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_goal_link_api_goals__goal_id__link_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeGoalLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalLinkResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标、关联或提案不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
