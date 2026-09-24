@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T05（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填） |
-| 状态 | PR-2 业务实现完成，待提交评审 |
+| 状态 | 已完成（契约 PR #19、业务实现 PR #20 均已合并） |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | #19（契约面，已合并）；PR-2（业务实现）见评审 |
+| 相关 PR | #19（契约面）、#20（业务实现），均已合并，CI 三 job 全绿 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容，不要追加"第二次会话……"这类流水账。历史在 Git 里。
 
@@ -119,7 +119,7 @@ frontend/
 
 - 已完成：开工检查；分支；交接卡（决策 A1—A10）。
 - 已完成（契约面，PR #19 已合并）：contracts 排期枚举；迁移 0005 排期族 8 张表 + `scheduling/models.py` ORM；`api/routes/scheduling.py` 6 端点契约形状；OpenAPI 与前端类型重导出。
-- 已完成（业务实现，PR-2 待提交）：
+- 已完成并合并（业务实现，PR #20，2026-09-24）：
   - `scheduling/engine.py`：`calculate_agenda` 纯函数——容量两口径、候选过滤、必须项集合与分层排序（紧迫/周缺口/饥饿/focus/rank/适配性）、装箱拆分、6 类冲突输出与 deadline_extension 变更建议；排序键全序 tiebreaker 保证确定性。
   - `scheduling/service.py`：快照组装（只读事务）、`persist_agenda` 短写事务落库与 current_revision 切换、preferences/availability/override/constrain 四个命令（各带 revision 重查）、`get_agenda`、`ensure_agenda`（作业提交 + outbox 投递）、`resolve_shared_budget`（A11 接缝真实现）。
   - `scheduling/jobs.py`：`agenda_generation` 作业处理函数（事务外计算、commit 内重查 revision），已登记 `celery_app.HANDLER_MODULES`。
