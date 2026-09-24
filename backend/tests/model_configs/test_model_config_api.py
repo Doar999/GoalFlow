@@ -207,9 +207,12 @@ class TestProbeEndpoint:
         class AuthenticationError(Exception):
             pass
 
+        # 假密钥用 40+ 字符长 token：命中脱敏正则，又不匹配凭证粗筛的 sk- 样式。
+        fake_key = "q" * 48
+
         class _FailingModel:
             def invoke(self, prompt: str) -> str:
-                raise AuthenticationError("401 invalid key sk-real-abcdef1234567890abcdef")
+                raise AuthenticationError(f"401 invalid key {fake_key}")
 
         monkeypatch.setattr("goalflow.model_configs.probes.build_chat_model", lambda **kwargs: _FailingModel())
         response = authed_client.post(
@@ -221,7 +224,8 @@ class TestProbeEndpoint:
         body = response.json()
         assert body["outcome"] == "failed"
         assert body["error"]["kind"] == "auth"
-        assert "sk-real-abcdef1234567890" not in body["error"]["message"]
+        assert fake_key not in body["error"]["message"]
+        assert "[已掩码]" in body["error"]["message"]
 
     def test_rate_limit_rule_matches_decision_a14(self) -> None:
         # 1000 次/15 分钟（几乎无限制的滥用兜底）。

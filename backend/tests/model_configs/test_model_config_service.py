@@ -275,16 +275,19 @@ class TestProbe:
         class AuthenticationError(Exception):
             pass
 
+        # 假密钥用 40+ 字符长 token：命中脱敏正则，又不匹配 check.sh 凭证粗筛的 sk- 样式。
+        fake_key = "z" * 48
         result = self._test(
             database,
             user,
             "probe-2",
-            _FakeModel(fail_at="basic_generation", exc=AuthenticationError("401 sk-ant-real-key-abcdefghijklmnopqrst")),
+            _FakeModel(fail_at="basic_generation", exc=AuthenticationError(f"401 invalid key {fake_key}")),
         )
         assert result.outcome == "failed"
         assert result.capabilities is None
         assert result.error_kind == "auth"
-        assert "sk-ant-real-key" not in (result.error_message or "")
+        assert fake_key not in (result.error_message or "")
+        assert "[已掩码]" in (result.error_message or "")
 
     def test_streaming_failure_leaves_basic_succeeded(self, database, user) -> None:
         class ReadTimeoutError(Exception):
