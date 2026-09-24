@@ -32,7 +32,7 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 | T03 | [T03-auth-session.md](T03-auth-session.md) | 待填 | 已完成（PR #10 已合并） |
 | T04 | [T04-goal-plan-versions.md](T04-goal-plan-versions.md) | Giraffe12311 | 已完成（#16 契约面、#18 业务实现均已合并） |
 | T05 | [T05-scheduling.md](T05-scheduling.md) | Giraffe12311 | 已完成（#19 契约面、#20 业务实现均已合并） |
-| T06 | [T06-goal-links.md](T06-goal-links.md) | Giraffe12311 | 进行中（#22 契约面已合并；PR-2 业务实现已完成待提交） |
+| T06 | [T06-goal-links.md](T06-goal-links.md) | Giraffe12311 | 已完成（#22 契约面、#23 业务实现均已合并） |
 | T07 | [T07-job-execution.md](T07-job-execution.md) | 待填 | 已完成（#11、#12、#13 已合并；202 验收挪到 T08） |
 | T16 | [T16-data-layer-foundation.md](T16-data-layer-foundation.md) | 待填 | 已完成（连接装配与 Alembic 脚手架已合并） |
 

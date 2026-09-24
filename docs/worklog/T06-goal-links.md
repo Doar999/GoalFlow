@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T06（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | Giraffe12311 |
-| 状态 | 进行中（业务实现 PR-2 已完成，待提交评审） |
+| 状态 | 已完成（#22 契约面、#23 业务实现均已合并） |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | #22（契约面，已合并）；PR-2 业务实现待提 |
+| 相关 PR | #22（契约面）、#23（业务实现），均已合并，CI 三 job 全绿 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容，不要追加"第二次会话……"这类流水账。历史在 Git 里。
 
@@ -109,9 +109,9 @@ frontend/
 ## 6. 进展
 
 - 已完成（契约面，PR #22 已合并）：迁移 0006（goal_links、task_dependencies、change_proposals）；`links/models.py` ORM 三表；contracts 新增 GoalLinkStatus / DependencyOutcome / ChangeProposalStatus / ChangeClass 四枚举；`api/routes/goal_links.py` 6 端点契约形状并注册进 app；OpenAPI 与前端类型重导出。
-- 已完成（业务实现 PR-2，待提交）：`links/service.py`——propose_goal_link（规范化目标对、边必须跨目标对、propose 阶段判环）、confirm_goal_link（确认事务内创建依赖边 + 全图无环校验 + 递增 planning revision）、propose_unlink（影响分析：未满足边/后继任务状态/受影响里程碑/已满足边归档清单）、accept（同事务原子：置 removed → 删边 → 处理 criteria_unsatisfiable → applied → 递增 revision；stale 预检在独立事务先落标记再抛 INPUT_STALE）、reject、get_change_proposal；路由 6 端点全部接线；`ConfirmGoalLinkRequest` 契约修正为携带依赖边（决策 A7 修正，随本 PR 评审确认）。
-- 已完成（回填）：`goals/lifecycle.py` `compute_pause_impact` 查 task_dependencies 真实现（签名加 session 参数，WIRED 恒成立）；`scheduling/service.py` `build_snapshot` 按 task_dependencies 生效边装配 `dependency_satisfied`（T05 A2 遗留清偿）。
-- 测试：`tests/links/` 28 条（service 21、API 7），含无环跨目标校验、原子应用、stale、隔离（Q01）、pause/排期回填集成；合计 376 passed。
+- 已完成并合并（业务实现，PR #23，2026-09-24）：`links/service.py`——propose_goal_link（规范化目标对、边必须跨目标对、propose 阶段判环）、confirm_goal_link（确认事务内创建依赖边 + 全图无环校验 + 递增 planning revision）、propose_unlink（影响分析：未满足边/后继任务状态/受影响里程碑/已满足边归档清单）、accept（同事务原子：置 removed → 删边 → 处理 criteria_unsatisfiable → applied → 递增 revision；stale 预检在独立事务先落标记再抛 INPUT_STALE）、reject、get_change_proposal；路由 6 端点全部接线；`ConfirmGoalLinkRequest` 契约修正为携带依赖边（决策 A7 修正，随 #23 评审确认）。
+- 已完成并合并（回填，随 #23）：`goals/lifecycle.py` `compute_pause_impact` 查 task_dependencies 真实现（签名加 session 参数，WIRED 恒成立）；`scheduling/service.py` `build_snapshot` 按 task_dependencies 生效边装配 `dependency_satisfied`（T05 A2 遗留清偿）。
+- 测试：`tests/links/` 28 条（service 21、API 7），合计 376 passed。
 
 ## 7. 验证结果
 
@@ -146,6 +146,10 @@ $ npx -y pnpm@9.15.4 --dir frontend run lint / exec tsc --noEmit / exec prettier
 | --- | --- | --- |
 | 关联列表读取端点（如 GET /api/goals/{id}/goal-links）未在 18 号第 6 节定义 | 前端展示既有关联时缺接口；T10 前需补契约 | T10 负责人 / 产品 |
 | change_class 其余三个取值（record_only / auto_schedule / auto_plan_local）的 CHECK 扩展 | T12 需随其契约 PR 扩展 CHECK 文本 | T12 负责人 |
+| criteria_unsatisfiable 首版结构性为空 | 产出引用机制（产品明确首版不做）落地后填充；accept 的取消路径已保留 | 产品 / T08 |
+| fitness_dependency_outcome 谓词注册 | 建立依赖边时的应用层校验随 T08/T09 生成链路接线 | T08/T09 负责人 |
+
+已全部完成（2026-09-24）：#22 契约面、#23 业务实现均合并；T04 A12（pause 依赖回填）与 T05 A2（排期快照依赖字段）两处遗留接缝已清偿。
 
 ## 9. 给接手者
 
