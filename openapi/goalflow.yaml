@@ -1562,13 +1562,13 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ModelCapabilities'
           - type: 'null'
-          description: 最近一次测试的能力记录；从未测试为 null
+          description: 最近一次测试的能力记录；从未测试或最近一次失败为 null
         created_at:
           format: date-time
           title: Created At
           type: string
         enabled:
-          description: false 表示已删除（归档行保留以支撑作业历史）
+          description: false 表示用户已禁用；删除（归档）配置不出现在任何响应里
           title: Enabled
           type: boolean
         has_credential:
@@ -1679,7 +1679,7 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ModelCapabilities'
           - type: 'null'
-          description: 测试得出的能力记录；失败时可能为 null
+          description: 测试得出的能力记录；基本生成失败时为 null
         config_id:
           title: Config Id
           type: string
@@ -2559,7 +2559,7 @@ components:
       title: TaskExecutor
       type: string
     TestModelConfigRequest:
-      description: 触发连通性测试。固定无私人内容短提示，频控与超时由服务端约束（决策 A7）。
+      description: 触发连通性测试。固定无私人内容短提示，超时与重试由服务端约束（决策 A7）。
       properties: {}
       title: TestModelConfigRequest
       type: object
@@ -5537,7 +5537,7 @@ paths:
   /api/model-configs/{config_id}/test:
     post:
       description: 显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与脱敏错误分类（决策
-        A7/A8）；频控仅作滥用兜底，阈值放宽至每用户 1000 次/15 分钟，正常使用不可触达（决策 A14）。
+        A7/A8）；频控仅作滥用兜底（每用户 1000 次/15 分钟，决策 A14）。
       operationId: test_model_config_api_model_configs__config_id__test_post
       parameters:
       - description: 模型配置 ID
@@ -5568,6 +5568,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行）
         '404':
           content:
             application/json:
@@ -5578,8 +5584,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: 请求参数校验未通过
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
         '429':
           content:
             application/json:
