@@ -34,6 +34,7 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 | T05 | [T05-scheduling.md](T05-scheduling.md) | Giraffe12311 | 已完成（#19 契约面、#20 业务实现均已合并） |
 | T06 | [T06-goal-links.md](T06-goal-links.md) | Giraffe12311 | 已完成（#22 契约面、#23 业务实现均已合并） |
 | T07 | [T07-job-execution.md](T07-job-execution.md) | 待填 | 已完成（#11、#12、#13 已合并；202 验收挪到 T08） |
+| T08 | [T08-model-and-domain-strategy.md](T08-model-and-domain-strategy.md) | 待指定（Agent 负责人） | 未开始（交接卡已建立；待对齐契约与 T14 业务接口） |
 | T10 | [T10-frontend-core.md](T10-frontend-core.md) | Codex | 进行中（会话与目标创建/详情切片） |
 | T14 | [T14-model-config.md](T14-model-config.md) | Giraffe12311 | 进行中（PR-1 契约面实现中） |
 | T16 | [T16-data-layer-foundation.md](T16-data-layer-foundation.md) | 待填 | 已完成（连接装配与 Alembic 脚手架已合并） |
