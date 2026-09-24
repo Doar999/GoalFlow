@@ -23,14 +23,16 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from goalflow.auth.service import CurrentUser
 from goalflow.contracts.enums import (
     CapacityBasis,
     DailyOverrideKind,
+    DependencyOutcome,
     GoalFocusStatus,
+    GoalLinkStatus,
     GoalStatus,
     TaskDayConstraintKind,
     TaskDayConstraintStatus,
@@ -40,6 +42,7 @@ from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.db.session import Database
 from goalflow.goals.models import Goal, Task, TaskSpec
 from goalflow.goals.service import _uuid
+from goalflow.links.models import GoalLink, TaskDependency
 from goalflow.scheduling.engine import (
     GoalSchedulingInput,
     SchedulingResult,
@@ -153,6 +156,36 @@ def _effective_capacity_for(session: Session, owner_id: str, day: date) -> tuple
 # —— 快照组装（只读）——
 
 
+def _dependency_blocked_task_ids(session: Session, owner_id: str, task_ids: list[str]) -> set[str]:
+    """返回前置依赖未满足的任务 id 集合（T06 回填 T05 决策 A2 占位）。
+
+    只统计**生效**的依赖边：同计划内的边（无 goal_link）与挂在 active 关联下的跨目标边；
+    proposed / removed 关联的边尚不生效，不参与判定。required_outcome=execution_completed
+    的边在前驱任务 completed 时视为满足；verification_passed 的边在验证记录（T11）落地前
+    一律视为未满足——不把"未检查"伪装成"已检查"。
+    """
+    if not task_ids:
+        return set()
+    rows = session.execute(
+        select(TaskDependency.successor_task_id, TaskDependency.required_outcome, Task.execution_status)
+        .join(Task, Task.id == TaskDependency.predecessor_task_id)
+        .outerjoin(GoalLink, GoalLink.id == TaskDependency.goal_link_id)
+        .where(
+            TaskDependency.owner_id == owner_id,
+            TaskDependency.successor_task_id.in_(task_ids),
+            or_(TaskDependency.goal_link_id.is_(None), GoalLink.status == GoalLinkStatus.ACTIVE.value),
+        )
+    ).all()
+    blocked: set[str] = set()
+    for successor_task_id, required_outcome, predecessor_status in rows:
+        if required_outcome == DependencyOutcome.EXECUTION_COMPLETED.value:
+            if predecessor_status != TaskExecutionStatus.COMPLETED.value:
+                blocked.add(successor_task_id)
+        else:
+            blocked.add(successor_task_id)
+    return blocked
+
+
 def build_snapshot(database: Database, owner_id: str, timezone: str, local_date: str) -> SchedulingSnapshot:
     """在只读事务里组装排期快照；组装期间的数据一致性由读事务快照保证（T01 D2）。"""
     with database.read() as session:
@@ -196,6 +229,7 @@ def build_snapshot(database: Database, owner_id: str, timezone: str, local_date:
             )
         ).all()
         task_rows = _latest_spec_pairs(rows)
+        blocked_task_ids = _dependency_blocked_task_ids(session, owner_id, [task.id for task, _ in task_rows])
 
         # 本周生效的 agenda item：投入满足与连续未安排天数都要用。
         agenda_rows = session.execute(
@@ -257,6 +291,7 @@ def build_snapshot(database: Database, owner_id: str, timezone: str, local_date:
                     minimum_session_minutes=spec.minimum_session_minutes,
                     earliest_date=spec.earliest_date,
                     latest_date=spec.latest_date,
+                    dependency_satisfied=task.id not in blocked_task_ids,
                     locked_minutes=locked_minutes,
                     unscheduled_days=unscheduled_days,
                 )

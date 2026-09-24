@@ -3,10 +3,10 @@
 | 项 | 值 |
 | --- | --- |
 | 工作包 | T06（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
-| 负责人 | （待填） |
-| 状态 | 进行中（契约面已完成，待提交评审） |
+| 负责人 | Giraffe12311 |
+| 状态 | 进行中（业务实现 PR-2 已完成，待提交评审） |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | （待填） |
+| 相关 PR | #22（契约面，已合并）；PR-2 业务实现待提 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容，不要追加"第二次会话……"这类流水账。历史在 Git 里。
 
@@ -73,8 +73,8 @@ frontend/
 | A4 | task_dependencies 边唯一 = UniqueConstraint(plan_version_id, predecessor_task_id, successor_task_id)；另加 CHECK `predecessor_task_id <> successor_task_id`（自依赖即平凡环，DB 层直接禁止）。goal_link_id 可空：同目标版本内的依赖边不挂 link；跨目标边必须挂已确认关联，由业务层校验（DB 无法跨表判定两任务的所属目标） | 03 第 3 节"一个版本内边唯一"、第 57 行"跨目标依赖仅在已确认关联下建立" | task_dependencies | 否 |
 | A5 | `change_class` CHECK 限 `confirmation_required` / `profile_revision_required`（D04/18 号第 3 节已确认的两个值）；14 号第 55 行另有三个取值归 T12，届时随 T12 契约 PR 扩展 CHECK | 18 号第 3 节；14 号第 55 行 | contracts、change_proposals | 否 |
 | A6 | change_proposals 的 `input_revision` 对应 `user_planning_state.revision`；stale 判定（提案基础版本已变）在业务实现中比较该值，不新增列 | 03 第 3 节；18 号第 3 节"提案过期返回 stale" | change_proposals、PR-2 | 否 |
-| A7 | API 契约面按 18 号第 6 节 5 个端点 + 补 `GET /api/change-proposals/{id}`（用户确认/拒绝前必须能读到影响分析；18 号未列读取端点，本卡补最小读取）。端点本期交付契约形状（桩），业务实现在 PR-2；命令端点沿用 Idempotency-Key 惯例 | 18 号第 6 节 | openapi、routes | 否 |
-| A8 | pause 依赖回填与排期依赖字段回填属业务实现 PR-2：`compute_pause_impact` 查 task_dependencies 真实现（`DependencyCheckStatus.WIRED`）；排期快照依赖结果字段改为查真实依赖边，打开"依赖未满足进 deferred"集成测试（T05 A2 遗留） | T04 A12；T05 A2 与第 8 节开放项 | goals/lifecycle、scheduling | 否 |
+| A7 | API 契约面按 18 号第 6 节 5 个端点 + 补 `GET /api/change-proposals/{id}`（用户确认/拒绝前必须能读到影响分析；18 号未列读取端点，本卡补最小读取）。命令端点沿用 Idempotency-Key 惯例。**PR-2 契约修正**：`ConfirmGoalLinkRequest` 必须携带任务依赖边——03 第 57 行规定"跨目标依赖仅在已确认关联下建立"，依赖边只能在确认事务内落库，propose 阶段的空壳关联承载不了它们；契约 PR #22 的空体设计在实现时被推翻，随 PR-2 评审确认 | 18 号第 6 节 + 03 第 57 行 | openapi、routes | 否 |
+| A8 | pause 依赖回填与排期依赖字段回填属业务实现 PR-2：`compute_pause_impact` 查 task_dependencies 真实现（`DependencyCheckStatus.WIRED`，签名加 session 参数）；排期快照依赖结果字段按生效边装配（同计划内边无 link、跨目标边须 active 关联），`verification_passed` 边在验证记录（T11）落地前一律视为未满足——不把"未检查"伪装成"已检查"；打开"依赖未满足进 deferred"集成测试（T05 A2 遗留） | T04 A12；T05 A2 与第 8 节开放项 | goals/lifecycle、scheduling | 否 |
 | A9 | 模块名 `links`（backend/src/goalflow/links/），路由文件 routes/goal_links.py；ORM 的 GoalLink/TaskDependency/ChangeProposal 与迁移 CHECK 文本逐字一致，由 models-match 测试比对 | 沿用 T04/T05 的模块-迁移配对模式 | links、migrations、tests/db | 否 |
 
 ## 5. 验收场景
@@ -83,64 +83,62 @@ frontend/
 
 ### 建立关联
 
-- [ ] 只带两个 goal_id、不带任务关系的关联请求被拒（18 号第 7 节）
-- [ ] 确认时同一事务校验：两目标同属一个用户、不自关联、规范化目标对未重复（含未失效的既有关联）
-- [ ] 跨目标依赖形成环时确认失败（`DEPENDENCY_CYCLE`），且校验覆盖其他目标的当前版本（03 第 57 行）
-- [ ] 解除关联后同一目标对可重新建立；removed 行保留归档（A2）
+- [x] 只带两个 goal_id、不带任务关系的关联请求被拒（18 号第 7 节；路由 Pydantic min_length=1 + service 兜底）
+- [x] 确认时同一事务校验：两目标同属一个用户、不自关联、规范化目标对未重复（含未失效的既有关联）
+- [x] 跨目标依赖形成环时确认失败（`DEPENDENCY_CYCLE`），且校验覆盖其他目标的当前版本（03 第 57 行；propose 阶段同判环，fail fast）
+- [x] 解除关联后同一目标对可重新建立；removed 行保留归档（A2，部分唯一索引只覆盖 proposed/active）
 
 ### 解除关联
 
-- [ ] 解除含未满足依赖的关联返回提案而非直接生效；提案含每条边、后继任务及执行状态、`criteria_unsatisfiable` 标记、受影响的里程碑与期限（18 号第 3 节）
-- [ ] 接受解除提案后，关联状态与依赖边在同一事务内一起变更；中途失败时两者都不变
-- [ ] 拒绝解除提案后关联与依赖保持原样，且相同输入不自动重新生成提案
-- [ ] 解除不改写进行中与已完成的后继任务
-- [ ] 提案过期（input_revision 落后）返回 stale，展示新差异，不沿用旧确认（A6）
+- [x] 解除含未满足依赖的关联返回提案而非直接生效；提案含每条边、后继任务及执行状态、`criteria_unsatisfiable` 标记、受影响的里程碑与期限（18 号第 3 节）
+- [x] 接受解除提案后，关联状态与依赖边在同一事务内一起变更；中途失败时两者都不变
+- [x] 拒绝解除提案后关联与依赖保持原样，且相同输入不自动重新生成提案（提案仅由显式端点创建）
+- [x] 解除不改写进行中与已完成的后继任务（accept 路径仅处理 pending 且 criteria_unsatisfiable 的任务）
+- [x] 提案过期（input_revision 落后）返回 stale，展示新差异，不沿用旧确认（A6；stale 标记在独立事务先落库再抛 INPUT_STALE）
 
 ### 回填接缝
 
-- [ ] pause 响应的 `affected_dependent_tasks` 来自 task_dependencies 真实查询，`dependency_check` 为 `wired`（T04 A12 回填）
-- [ ] 排期快照中依赖未满足的后继任务进 deferred，不再恒 satisfied（T05 A2 回填，含集成测试）
+- [x] pause 响应的 `affected_dependent_tasks` 来自 task_dependencies 真实查询，`dependency_check` 为 `wired`（T04 A12 回填）
+- [x] 排期快照中依赖未满足的后继任务进 deferred，不再恒 satisfied（T05 A2 回填，含集成测试）
 
 ### 通用红线
 
-- [ ] 数据隔离：第二个用户关联他人目标、读取他人解除提案、操作他人提案一律被拒（Q01）
-- [ ] 全部数据库测试在与生产同构的 SQLite 配置（同一组 pragma、WAL、真实库文件）下运行，不允许 `:memory:`
+- [x] 数据隔离：第二个用户关联他人目标、读取他人解除提案、操作他人提案一律被拒（Q01）
+- [x] 全部数据库测试在与生产同构的 SQLite 配置（同一组 pragma、WAL、真实库文件）下运行，不允许 `:memory:`
 
 ## 6. 进展
 
-- 已完成：开工检查（T04/T05 前置已合并、D04 已确认、无并行占用）；分支 feat/T06-goal-links；交接卡（决策 A1—A9）。
-- 已完成（契约面，待提交）：迁移 0006（goal_links、task_dependencies、change_proposals）；`links/models.py` ORM 三表；contracts 新增 GoalLinkStatus / DependencyOutcome / ChangeProposalStatus / ChangeClass 四枚举；`api/routes/goal_links.py` 6 端点契约形状（桩）并注册进 app；OpenAPI 与前端类型重导出。
-- 未开始：业务实现 PR-2（links service、无环校验、解除提案原子应用、pause/排期接缝回填）。
+- 已完成（契约面，PR #22 已合并）：迁移 0006（goal_links、task_dependencies、change_proposals）；`links/models.py` ORM 三表；contracts 新增 GoalLinkStatus / DependencyOutcome / ChangeProposalStatus / ChangeClass 四枚举；`api/routes/goal_links.py` 6 端点契约形状并注册进 app；OpenAPI 与前端类型重导出。
+- 已完成（业务实现 PR-2，待提交）：`links/service.py`——propose_goal_link（规范化目标对、边必须跨目标对、propose 阶段判环）、confirm_goal_link（确认事务内创建依赖边 + 全图无环校验 + 递增 planning revision）、propose_unlink（影响分析：未满足边/后继任务状态/受影响里程碑/已满足边归档清单）、accept（同事务原子：置 removed → 删边 → 处理 criteria_unsatisfiable → applied → 递增 revision；stale 预检在独立事务先落标记再抛 INPUT_STALE）、reject、get_change_proposal；路由 6 端点全部接线；`ConfirmGoalLinkRequest` 契约修正为携带依赖边（决策 A7 修正，随本 PR 评审确认）。
+- 已完成（回填）：`goals/lifecycle.py` `compute_pause_impact` 查 task_dependencies 真实现（签名加 session 参数，WIRED 恒成立）；`scheduling/service.py` `build_snapshot` 按 task_dependencies 生效边装配 `dependency_satisfied`（T05 A2 遗留清偿）。
+- 测试：`tests/links/` 28 条（service 21、API 7），含无环跨目标校验、原子应用、stale、隔离（Q01）、pause/排期回填集成；合计 376 passed。
 
 ## 7. 验证结果
 
 2026-09-24 在 Windows、Python 3.11、SQLite 上执行。数据库用例全部由迁移建出真实库文件，经 `create_database_engine()` 连接（WAL、`foreign_keys=ON`、`busy_timeout=5000`），不使用内存库。
 
 ```text
-$ uv run --project backend python -m pytest backend/tests -q --tb=short -rf
-348 passed, 1 warning（与 #20 合并后基线持平，本 PR 未新增业务测试）
+$ uv run --project backend python -m pytest backend/tests -q --tb=short
+376 passed, 1 warning（348 基线 + 本 PR 新增 28）
 唯一 warning 为 starlette 对 anyio 别名的既有弃用提示
 
 $ uv run --project backend ruff format --check backend / ruff check backend
 通过
 
 $ uv run --project backend mypy --config-file backend/pyproject.toml backend/src
-Success: no issues found in 58 source files
+Success: no issues found in 59 source files
 
 $ uv lock --project backend --check
 通过（无锁文件漂移）
 
 $ 契约漂移：重新导出 OpenAPI 与 openapi/goalflow.yaml diff
-一致
+一致（ConfirmGoalLinkRequest 契约修正已同步重导出）
 
 $ npx -y pnpm@9.15.4 --dir frontend run lint / exec tsc --noEmit / exec prettier --check src
 全部通过（check.sh 前端段因环境 corepack 冲突失败，以上为等价命令真实输出）
-
-$ 凭证粗筛（check.sh 同模式）
-未发现疑似凭证
 ```
 
-环境备注：全量 pytest 在沙箱内曾两次于 41%/62% 处无摘要硬退（Windows 文件锁干扰），绕过沙箱后完整通过；backend/tests/db 单独跑 29 项全过。
+环境备注：全量 pytest 在沙箱内会因 Windows 文件锁干扰中断，需绕过沙箱执行；此外本包开发中发现**外层写事务内嵌套写事务必然死锁到 busy_timeout 超时**（SQLite 库级写锁），测试支撑的取数与落库必须分事务（见接手者第 7 条）。
 
 ## 8. 未决问题
 
@@ -157,3 +155,5 @@ $ 凭证粗筛（check.sh 同模式）
 4. **解除是提案加原子应用**：不要先改 goal_links.status 再清理依赖边——两步之间失败的中间状态是产品规则明令禁止的（18 号原则）。
 5. **测试文件命名带模块前缀**（`test_links_*.py`）：tests 目录无 `__init__.py`，通用文件名会与其他模块 pytest 收集冲突（T04/T05 都踩过）。
 6. **fitness 领域的 required_outcome 限制在应用层**：不要试图用 DB CHECK 表达——它依赖跨表的 goal.domain（A3）。
+7. **外层写事务里绝不能再开写事务**：SQLite 库级写锁 + `BEGIN IMMEDIATE`，嵌套必死锁到 busy_timeout 超时。测试支撑里"先读批次/阶段、再落任务"必须拆成两个事务；业务代码同理由 db.write() 的短事务协议保证。
+8. **stale 标记先落库再抛错**：接受提案时若发现 input_revision 落后，在独立事务里置 stale 并提交，然后才抛 INPUT_STALE——在抛异常的同一事务里做标记会随回滚消失。

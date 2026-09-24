@@ -43,9 +43,9 @@ class TestPause:
         assert view.goal.status == "paused"
         assert view.goal.pause_reason == "出差两周"
         assert view.goal.paused_at is not None
-        # 接缝未接入：空列表 + 显式标记（A12）。
+        # T06 回填后依赖校验已真实执行：无跨目标被依赖任务时空列表即"确无影响"（A12 兑现）。
         assert view.affected_dependent_tasks == []
-        assert view.dependency_check.value == "not_wired"
+        assert view.dependency_check.value == "wired"
 
         with database.read() as session:
             from sqlalchemy import select

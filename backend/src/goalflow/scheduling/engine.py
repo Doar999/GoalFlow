@@ -7,8 +7,8 @@
 - 排期只分配分钟数与顺序，不生成起止时刻（R06）；同一天同一任务最多一个分配项。
 - 数值阈值来自 `contracts.policies` 的版本化常量（T05 决策 A1），不在本模块散落魔数。
 
-候选过滤（13 号第 3 节）依赖依赖结果的部分：T06 建 `task_dependencies` 前，
-快照中的 `dependency_satisfied` 恒为 True（T05 决策 A2 的占位约定）。
+候选过滤（13 号第 3 节）依赖依赖结果的部分：快照中的 `dependency_satisfied` 由
+服务层按 `task_dependencies` 生效边装配（T06 回填 T05 决策 A2 的占位）。
 暂停目标的任务不进入候选集也不进 deferred——它们属于"整体不参与排期"的目标，
 出现在每日页会误导用户；目标恢复后 revision 递增会触发重算。
 """
@@ -60,7 +60,7 @@ class TaskSchedulingInput:
     minimum_session_minutes: int | None
     earliest_date: str | None
     latest_date: str
-    # A2 占位：T06 前恒为 True，"未检查"不伪装成"已检查"。
+    # 服务层按生效依赖边装配（T06 回填 A2 占位）；默认 True 使不含依赖边的快照保持原语义。
     dependency_satisfied: bool = True
     # locked 约束固定当前分配分钟数（13 号第 4 节）；未锁定为 None。
     locked_minutes: int | None = None
