@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T04（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填） |
-| 状态 | PR-2 业务实现完成，评审中 |
+| 状态 | 已完成（契约 PR #16、业务实现 PR #18 均已合并） |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | #16（契约面，已合并）；PR-2（业务实现）见评审 |
+| 相关 PR | #16（契约面）、#18（PR-2 业务实现），均已合并，CI 三 job 全绿 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容，不要追加"第二次会话……"这类流水账。历史在 Git 里。
 
@@ -115,7 +115,7 @@ frontend/
 ## 6. 进展
 
 - 契约面已完成（PR #16 已合并）：迁移 0004、ORM 模型、contracts 枚举与错误码、policies 策略常量、19 端点契约形状、OpenAPI 与前端生成类型。
-- 业务实现已完成（PR-2，评审中）：`goals/service.py` 承载 create_goal、档案草稿读/改/确认、路线集读取与选择、计划草稿读取与任务编辑；`goals/lifecycle.py` 承载 activate_plan 事务与 pause、resume、close、undo_closure、derive 五个命令。15 个端点接通真实业务，4 个生成类端点保持契约桩（A1，随 T08 接入）。测试覆盖第 5 节全部场景（42 条）。
+- 业务实现已完成并合并（PR #18，2026-09-24）：`goals/service.py` 承载 create_goal、档案草稿读/改/确认、路线集读取与选择、计划草稿读取与任务编辑；`goals/lifecycle.py` 承载 activate_plan 事务与 pause、resume、close、undo_closure、derive 五个命令。15 个端点接通真实业务，4 个生成类端点保持契约桩（A1，随 T08 接入）。测试覆盖第 5 节全部场景（42 条）。
 - 开放项：pause 依赖回填（T06）、resume 预算接缝真实现（T05）、生成类端点接线（T08/T09）。
 
 ## 7. 验证结果

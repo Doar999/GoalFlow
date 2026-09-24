@@ -87,6 +87,134 @@ components:
       - task_id
       title: AffectedDependency
       type: object
+    AgendaItemView:
+      description: 当日一个任务的分配（13 号第 1 节 agenda_items）。首版没有起止时刻（R06）。
+      properties:
+        allocated_minutes:
+          description: 分配分钟数；不超过任务剩余预计分钟
+          exclusiveMinimum: 0.0
+          title: Allocated Minutes
+          type: integer
+        rank:
+          description: 当日执行顺序
+          minimum: 1.0
+          title: Rank
+          type: integer
+        reason_codes:
+          description: 排序键、所选层级及原因码（13 号第 4 节）
+          items:
+            $ref: '#/components/schemas/SchedulingReasonCode'
+          title: Reason Codes
+          type: array
+        task_id:
+          title: Task Id
+          type: string
+        task_spec_id:
+          description: 排期所依据的任务内容版本
+          title: Task Spec Id
+          type: string
+      required:
+      - task_id
+      - task_spec_id
+      - rank
+      - allocated_minutes
+      - reason_codes
+      title: AgendaItemView
+      type: object
+    AgendaResponse:
+      description: '某日的当前安排（05-module-contracts read_today）。
+
+
+        读取不直接创建作业：尚无排期结果时 current 为 null，前端据此调用 generation 端点。'
+      properties:
+        current:
+          anyOf:
+          - $ref: '#/components/schemas/AgendaRevisionView'
+          - type: 'null'
+          description: 当前生效的排期结果；尚无时为 null
+        local_date:
+          format: date
+          title: Local Date
+          type: string
+        planning_revision:
+          description: 当前排期协调入口版本
+          minimum: 0.0
+          title: Planning Revision
+          type: integer
+      required:
+      - local_date
+      - planning_revision
+      - current
+      title: AgendaResponse
+      type: object
+    AgendaRevisionStatus:
+      description: 单次排期结果状态（03 第 4 节 agenda_revisions.status）。
+      enum:
+      - ready
+      - conflicted
+      title: AgendaRevisionStatus
+      type: string
+    AgendaRevisionView:
+      description: 一次排期计算的完整结果（13 号第 1 节 SchedulingResult 的持久化形状）。
+      properties:
+        capacity:
+          $ref: '#/components/schemas/CapacitySummaryView'
+        change_proposals:
+          items:
+            $ref: '#/components/schemas/ChangeProposalView'
+          title: Change Proposals
+          type: array
+        conflicts:
+          items:
+            $ref: '#/components/schemas/ConflictView'
+          title: Conflicts
+          type: array
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        deferred:
+          items:
+            $ref: '#/components/schemas/DeferredTaskView'
+          title: Deferred
+          type: array
+        id:
+          title: Id
+          type: string
+        input_planning_revision:
+          description: 计算基于的 planning revision
+          minimum: 0.0
+          title: Input Planning Revision
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/AgendaItemView'
+          title: Items
+          type: array
+        scheduling_policy_version:
+          description: 当时按哪版排期策略判定（Q08 可解释）
+          title: Scheduling Policy Version
+          type: string
+        status:
+          $ref: '#/components/schemas/AgendaRevisionStatus'
+        version_no:
+          minimum: 1.0
+          title: Version No
+          type: integer
+      required:
+      - id
+      - version_no
+      - status
+      - input_planning_revision
+      - scheduling_policy_version
+      - capacity
+      - items
+      - deferred
+      - conflicts
+      - change_proposals
+      - created_at
+      title: AgendaRevisionView
+      type: object
     AuthSessionResponse:
       description: 当前用户与会话元数据。不包含会话令牌。
       properties:
@@ -99,6 +227,50 @@ components:
       - session
       title: AuthSessionResponse
       type: object
+    AvailabilityVersionResponse:
+      description: 周额度版本（03 第 4 节 availability_versions）。
+      properties:
+        coordination_required:
+          description: 已有安排需要协调时为 true（05-module-contracts update_availability）
+          title: Coordination Required
+          type: boolean
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        effective_from:
+          description: 生效起始日期；按日期选择使用的版本
+          format: date
+          title: Effective From
+          type: string
+        id:
+          title: Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        version_no:
+          minimum: 1.0
+          title: Version No
+          type: integer
+        weekly_minutes:
+          additionalProperties:
+            type: integer
+          description: 周一至周日七个额度（分钟），键为 monday…sunday
+          title: Weekly Minutes
+          type: object
+      required:
+      - revision
+      - id
+      - effective_from
+      - weekly_minutes
+      - version_no
+      - created_at
+      - coordination_required
+      title: AvailabilityVersionResponse
+      type: object
     CancelJobRequest:
       properties:
         expected_revision:
@@ -109,6 +281,52 @@ components:
       required:
       - expected_revision
       title: CancelJobRequest
+      type: object
+    CapacityBasis:
+      description: '当日容量的额度口径（13 号第 1 节 capacity_summary 的"额度来源"，取值为 T05 决策 A9）。
+
+
+        total 按"全天额度 − 已投入"计剩余；remaining 从用户声明时点起扣除，
+
+        不重复扣减已投入时间（03 第 4 节）。'
+      enum:
+      - total
+      - remaining
+      title: CapacityBasis
+      type: string
+    CapacitySummaryView:
+      description: 当日额度汇总（13 号第 1 节 capacity_summary：额度来源、已投入、已保留和剩余分钟）。
+      properties:
+        basis:
+          $ref: '#/components/schemas/CapacityBasis'
+          description: 额度口径；total 按全天扣已投入，remaining 从声明时点起扣
+        quota_minutes:
+          description: 当日有效额度（分钟）
+          minimum: 0.0
+          title: Quota Minutes
+          type: integer
+        remaining_minutes:
+          description: 当前剩余容量（分钟）
+          minimum: 0.0
+          title: Remaining Minutes
+          type: integer
+        reserved_minutes:
+          description: 已保留（分钟）
+          minimum: 0.0
+          title: Reserved Minutes
+          type: integer
+        spent_minutes:
+          description: 今日已投入（分钟）
+          minimum: 0.0
+          title: Spent Minutes
+          type: integer
+      required:
+      - basis
+      - quota_minutes
+      - spent_minutes
+      - reserved_minutes
+      - remaining_minutes
+      title: CapacitySummaryView
       type: object
     ChangePasswordRequest:
       properties:
@@ -129,6 +347,39 @@ components:
       - current_password
       - new_password
       title: ChangePasswordRequest
+      type: object
+    ChangeProposalView:
+      description: '需要用户确认的变更建议（13 号第 6 节 pending change proposal）。
+
+
+        里程碑延期、增加总投入、降低某目标投入、移动用户锁定/进行中任务或影响
+
+        关联目标时不自动执行，生成待确认建议（D06）。'
+      properties:
+        description:
+          description: 建议内容与理由
+          title: Description
+          type: string
+        proposal_type:
+          description: 建议类型：deadline_extension / increase_investment / reduce_investment / move_locked_task
+            / cross_goal_impact（取值随业务实现固定）
+          title: Proposal Type
+          type: string
+        requires_confirmation:
+          default: true
+          description: 首版建议一律待确认（D06）
+          title: Requires Confirmation
+          type: boolean
+        task_ids:
+          description: 涉及的任务
+          items:
+            type: string
+          title: Task Ids
+          type: array
+      required:
+      - proposal_type
+      - description
+      title: ChangeProposalView
       type: object
     CloseGoalRequest:
       properties:
@@ -175,6 +426,53 @@ components:
       - expected_revision
       title: ConfirmProfileRequest
       type: object
+    ConflictView:
+      description: 无法同时满足的硬约束或分钟缺口（13 号第 1、6 节）。
+      properties:
+        code:
+          $ref: '#/components/schemas/SchedulingReasonCode'
+        message:
+          description: 面向用户的问题说明（Q04）
+          title: Message
+          type: string
+        minutes_gap:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: 缺口分钟数；不适用时为空
+          title: Minutes Gap
+        task_ids:
+          description: 涉及的任务；必须项冲突时保留全部冲突项供用户选择
+          items:
+            type: string
+          title: Task Ids
+          type: array
+      required:
+      - code
+      - task_ids
+      - message
+      title: ConflictView
+      type: object
+    ConstrainTaskRequest:
+      description: '设置或清除单日任务约束（05-module-contracts constrain_today_task）。
+
+
+        constraint_kind 为空表示清除该日该任务的既有约束。'
+      properties:
+        constraint_kind:
+          anyOf:
+          - $ref: '#/components/schemas/TaskDayConstraintKind'
+          - type: 'null'
+          description: must_do_today / locked；空值表示清除
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      title: ConstrainTaskRequest
+      type: object
     CreateGoalRequest:
       properties:
         initial_description:
@@ -215,6 +513,74 @@ components:
       - criterion_key
       - met
       title: CriterionConfirmation
+      type: object
+    DailyOverrideKind:
+      description: '当天额度口径（03 第 4 节 daily_overrides.override_kind）。
+
+
+        total 是"今天共有多少时间"，remaining 是"从声明时点起还剩多少时间"；
+
+        两种口径不可混用，剩余容量计算方式不同（03 第 4 节）。'
+      enum:
+      - total
+      - remaining
+      title: DailyOverrideKind
+      type: string
+    DailyOverrideResponse:
+      description: 单日额度声明（03 第 4 节 daily_overrides）。
+      properties:
+        coordination_required:
+          description: 已有安排需要协调时为 true
+          title: Coordination Required
+          type: boolean
+        local_date:
+          format: date
+          title: Local Date
+          type: string
+        measured_at:
+          description: 声明时间；remaining 口径从此刻起扣减
+          format: date-time
+          title: Measured At
+          type: string
+        minutes:
+          minimum: 0.0
+          title: Minutes
+          type: integer
+        override_kind:
+          $ref: '#/components/schemas/DailyOverrideKind'
+          description: total 与 remaining 是两种口径，不可混用
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+      required:
+      - revision
+      - local_date
+      - override_kind
+      - minutes
+      - measured_at
+      - coordination_required
+      title: DailyOverrideResponse
+      type: object
+    DeferredTaskView:
+      description: 未进入当天的任务及原因（13 号第 1 节 deferred_tasks）。
+      properties:
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 面向用户的补充说明
+          title: Detail
+        reason_code:
+          $ref: '#/components/schemas/SchedulingReasonCode'
+        task_id:
+          title: Task Id
+          type: string
+      required:
+      - task_id
+      - reason_code
+      title: DeferredTaskView
       type: object
     DependencyCheckStatus:
       description: '暂停响应中跨目标依赖影响的检查标记（T04 决策 A12）。
@@ -357,6 +723,18 @@ components:
       - batch_window
       title: DraftTaskResponse
       type: object
+    EnsureAgendaRequest:
+      description: 保证某日存在基于最新 planning revision 的安排（05-module-contracts ensure_agenda）。
+      properties:
+        planning_revision:
+          anyOf:
+          - minimum: 0.0
+            type: integer
+          - type: 'null'
+          description: 客户端已知的 planning revision；服务端以其判断是否需要重算
+          title: Planning Revision
+      title: EnsureAgendaRequest
+      type: object
     ErrorCode:
       description: 对外错误码。
       enum:
@@ -465,6 +843,16 @@ components:
       - learning
       - fitness
       title: GoalDomain
+      type: string
+    GoalFocusStatus:
+      description: '目标调度偏好中的 focus 状态（03 第 4 节 focus_status 列，取值未在文档固定，T05 决策 A7）。
+
+
+        focused 只提升弹性任务排序权重，不越过硬期限与进行中任务（13 号第 9 节）。'
+      enum:
+      - focused
+      - normal
+      title: GoalFocusStatus
       type: string
     GoalKind:
       description: '目标形态，由档案的时间边界推导（PRD D12 已确认）。
@@ -890,6 +1278,27 @@ components:
       - password
       title: LoginRequest
       type: object
+    OverrideDayRequest:
+      description: 声明单日额度（05-module-contracts override_today）。
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        minutes:
+          minimum: 0.0
+          title: Minutes
+          type: integer
+        override_kind:
+          $ref: '#/components/schemas/DailyOverrideKind'
+          description: total=全天总额；remaining=从声明时点起的剩余
+      required:
+      - expected_revision
+      - override_kind
+      - minutes
+      title: OverrideDayRequest
+      type: object
     PauseGoalRequest:
       properties:
         expected_revision:
@@ -1092,6 +1501,28 @@ components:
       - discarded
       title: PlanVersionStatus
       type: string
+    PreferenceInput:
+      description: 单个目标的调度偏好（03 第 4 节 goal_scheduling_preferences）。
+      properties:
+        focus_status:
+          $ref: '#/components/schemas/GoalFocusStatus'
+          description: focus 只提升弹性任务排序权重
+        goal_id:
+          description: 活动目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+        rank:
+          description: 目标顺序，数值小者优先；只参与弹性任务取舍
+          minimum: 1.0
+          title: Rank
+          type: integer
+      required:
+      - goal_id
+      - focus_status
+      - rank
+      title: PreferenceInput
+      type: object
     ProfileDraftReadiness:
       description: 档案草稿的就绪状态（03 第 2 节）。
       enum:
@@ -1512,6 +1943,41 @@ components:
       - route_id
       title: RouteVariantRequest
       type: object
+    SchedulingPreferencesResponse:
+      description: 偏好保存结果：新的排期协调入口版本（05-module-contracts update_goal_priorities）。
+      properties:
+        planning_revision:
+          description: 更新后的 planning revision；变化触发受影响安排重算
+          minimum: 0.0
+          title: Planning Revision
+          type: integer
+        preferences:
+          description: 保存后的全部活动目标偏好
+          items:
+            $ref: '#/components/schemas/PreferenceInput'
+          title: Preferences
+          type: array
+      required:
+      - planning_revision
+      - preferences
+      title: SchedulingPreferencesResponse
+      type: object
+    SchedulingReasonCode:
+      description: '排期原因码（13-scheduling-engine.md 第 6 节）。
+
+
+        同时用于 agenda_items 的安排原因、deferred_tasks 的延期原因和 conflicts 的冲突类型；
+
+        具体语义随所在集合不同，字段描述里分别说明。'
+      enum:
+      - MANDATORY_CAPACITY_CONFLICT
+      - WEEKLY_CAPACITY_CONFLICT
+      - DEADLINE_RISK
+      - DEPENDENCY_BLOCKED
+      - MINIMUM_SESSION_UNFIT
+      - CROSS_GOAL_IMPACT
+      title: SchedulingReasonCode
+      type: string
     SelectRouteRequest:
       properties:
         expected_revision:
@@ -1544,6 +2010,45 @@ components:
       - expires_at
       title: SessionInfo
       type: object
+    TaskConstraintResponse:
+      description: 单日任务约束的保存结果（05-module-contracts constrain_today_task）。
+      properties:
+        constraint_kind:
+          $ref: '#/components/schemas/TaskDayConstraintKind'
+        local_date:
+          format: date
+          title: Local Date
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        status:
+          description: active / cleared；清除保留历史行（Q08）
+          title: Status
+          type: string
+        task_id:
+          title: Task Id
+          type: string
+      required:
+      - revision
+      - task_id
+      - local_date
+      - constraint_kind
+      - status
+      title: TaskConstraintResponse
+      type: object
+    TaskDayConstraintKind:
+      description: '单日任务约束（03 第 4 节 task_day_constraints.constraint_kind）。
+
+
+        must_do_today 固定日期；locked 还固定当前分配分钟数（13 号第 4 节）。'
+      enum:
+      - must_do_today
+      - locked
+      title: TaskDayConstraintKind
+      type: string
     TaskExecutionStatus:
       description: '任务执行状态（03 第 3 节）。
 
@@ -1575,6 +2080,31 @@ components:
       required:
       - expected_revision
       title: UndoClosureRequest
+      type: object
+    UpdateAvailabilityRequest:
+      description: 提交周额度与生效日期（05-module-contracts update_availability）。
+      properties:
+        effective_from:
+          description: 生效起始日期；旧版本保留，按日期选择
+          format: date
+          title: Effective From
+          type: string
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        weekly_minutes:
+          additionalProperties:
+            type: integer
+          description: 周一至周日七个额度（分钟），键为 monday…sunday
+          title: Weekly Minutes
+          type: object
+      required:
+      - expected_revision
+      - effective_from
+      - weekly_minutes
+      title: UpdateAvailabilityRequest
       type: object
     UpdateDraftTaskRequest:
       properties:
@@ -1635,6 +2165,25 @@ components:
       - edits
       title: UpdateProfileDraftRequest
       type: object
+    UpdateSchedulingPreferencesRequest:
+      description: 一次提交全部活动目标的 focus 状态与顺序（13 号第 8 节）。
+      properties:
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+        preferences:
+          items:
+            $ref: '#/components/schemas/PreferenceInput'
+          minItems: 1
+          title: Preferences
+          type: array
+      required:
+      - expected_revision
+      - preferences
+      title: UpdateSchedulingPreferencesRequest
+      type: object
     UserRole:
       description: 账号角色。首位注册者不自动成为管理员，只能由部署者本地命令授予。
       enum:
@@ -1674,6 +2223,193 @@ info:
   version: 0.1.0
 openapi: 3.1.0
 paths:
+  /api/agendas/{local_date}:
+    get:
+      description: 返回当前安排或缺失状态；读取不直接创建作业（05-module-contracts read_today）。
+      operationId: read_agenda_api_agendas__local_date__get
+      parameters:
+      - description: 用户本地日期，格式 YYYY-MM-DD
+        in: path
+        name: local_date
+        required: true
+        schema:
+          description: 用户本地日期，格式 YYYY-MM-DD
+          format: date
+          title: Local Date
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 日程、任务、目标或相关资源不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: 读取某日安排
+      tags:
+      - scheduling
+  /api/agendas/{local_date}/generation:
+    post:
+      description: 保证该日期存在基于最新 planning revision 的安排；已有有效安排则去重返回（13 号第 8 节）。异步：返回 202 与作业引用。
+      operationId: ensure_agenda_api_agendas__local_date__generation_post
+      parameters:
+      - description: 用户本地日期，格式 YYYY-MM-DD
+        in: path
+        name: local_date
+        required: true
+        schema:
+          description: 用户本地日期，格式 YYYY-MM-DD
+          format: date
+          title: Local Date
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnsureAgendaRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 日程、任务、目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 生成某日安排
+      tags:
+      - scheduling
+  /api/agendas/{local_date}/task-constraints/{task_id}:
+    put:
+      description: 设置 must_do_today 或 locked，或清除既有约束；无法满足时返回容量冲突（13 号第 4 节）。
+      operationId: constrain_today_task_api_agendas__local_date__task_constraints__task_id__put
+      parameters:
+      - description: 用户本地日期，格式 YYYY-MM-DD
+        in: path
+        name: local_date
+        required: true
+        schema:
+          description: 用户本地日期，格式 YYYY-MM-DD
+          format: date
+          title: Local Date
+          type: string
+      - description: 任务 ID
+        in: path
+        name: task_id
+        required: true
+        schema:
+          description: 任务 ID
+          maxLength: 36
+          title: Task Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstrainTaskRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskConstraintResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 日程、任务、目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 设置单日任务约束
+      tags:
+      - scheduling
   /api/auth/login:
     post:
       description: 账号不存在、密码错误、账号已禁用统一返回 INVALID_CREDENTIALS。已登录时再次登录会撤销旧会话。
@@ -1917,6 +2653,127 @@ paths:
       summary: 当前用户与会话
       tags:
       - auth
+  /api/availability:
+    put:
+      description: 保存新的周额度版本；已有安排需要协调时在响应中明确标记（05-module-contracts）。
+      operationId: update_availability_api_availability_put
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAvailabilityRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityVersionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 保存周额度版本
+      tags:
+      - scheduling
+  /api/availability/dates/{local_date}:
+    put:
+      description: 修改当天总额或剩余额度并触发协调；不足以容纳现有安排时返回可见冲突（R08、Q04）。
+      operationId: override_today_api_availability_dates__local_date__put
+      parameters:
+      - description: 用户本地日期，格式 YYYY-MM-DD
+        in: path
+        name: local_date
+        required: true
+        schema:
+          description: 用户本地日期，格式 YYYY-MM-DD
+          format: date
+          title: Local Date
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideDayRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyOverrideResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 日程、任务、目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 声明单日额度
+      tags:
+      - scheduling
   /api/goals:
     post:
       description: 从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。
@@ -1970,6 +2827,65 @@ paths:
       summary: 创建目标
       tags:
       - goals
+  /api/goals/scheduling-preferences:
+    put:
+      description: 一次提交活动目标 focus 状态和排序，产生新 planning revision 并触发受影响安排重算（13 号第 8 节）。
+      operationId: update_scheduling_preferences_api_goals_scheduling_preferences_put
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSchedulingPreferencesRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulingPreferencesResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 日程、任务、目标或相关资源不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+      summary: 保存目标调度偏好
+      tags:
+      - scheduling
   /api/goals/{goal_id}:
     get:
       operationId: read_goal_api_goals__goal_id__get

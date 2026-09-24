@@ -185,3 +185,80 @@ class TaskExecutor(StrEnum):
     USER = "user"
     AGENT = "agent"
     COLLABORATIVE = "collaborative"
+
+
+# —— 时间预算与排期（T05 契约 PR；取值出处见各 docstring）——
+
+
+class SchedulingReasonCode(StrEnum):
+    """排期原因码（13-scheduling-engine.md 第 6 节）。
+
+    同时用于 agenda_items 的安排原因、deferred_tasks 的延期原因和 conflicts 的冲突类型；
+    具体语义随所在集合不同，字段描述里分别说明。
+    """
+
+    MANDATORY_CAPACITY_CONFLICT = "MANDATORY_CAPACITY_CONFLICT"
+    WEEKLY_CAPACITY_CONFLICT = "WEEKLY_CAPACITY_CONFLICT"
+    DEADLINE_RISK = "DEADLINE_RISK"
+    DEPENDENCY_BLOCKED = "DEPENDENCY_BLOCKED"
+    MINIMUM_SESSION_UNFIT = "MINIMUM_SESSION_UNFIT"
+    CROSS_GOAL_IMPACT = "CROSS_GOAL_IMPACT"
+
+
+class TaskDayConstraintKind(StrEnum):
+    """单日任务约束（03 第 4 节 task_day_constraints.constraint_kind）。
+
+    must_do_today 固定日期；locked 还固定当前分配分钟数（13 号第 4 节）。
+    """
+
+    MUST_DO_TODAY = "must_do_today"
+    LOCKED = "locked"
+
+
+class TaskDayConstraintStatus(StrEnum):
+    """单日任务约束的生效状态（03 第 4 节 status 列，取值未在文档固定，T05 决策 A8）。
+
+    清除约束保留行为 cleared 行、不删行，历史可解释（Q08）。
+    """
+
+    ACTIVE = "active"
+    CLEARED = "cleared"
+
+
+class DailyOverrideKind(StrEnum):
+    """当天额度口径（03 第 4 节 daily_overrides.override_kind）。
+
+    total 是"今天共有多少时间"，remaining 是"从声明时点起还剩多少时间"；
+    两种口径不可混用，剩余容量计算方式不同（03 第 4 节）。
+    """
+
+    TOTAL = "total"
+    REMAINING = "remaining"
+
+
+class AgendaRevisionStatus(StrEnum):
+    """单次排期结果状态（03 第 4 节 agenda_revisions.status）。"""
+
+    READY = "ready"
+    CONFLICTED = "conflicted"
+
+
+class GoalFocusStatus(StrEnum):
+    """目标调度偏好中的 focus 状态（03 第 4 节 focus_status 列，取值未在文档固定，T05 决策 A7）。
+
+    focused 只提升弹性任务排序权重，不越过硬期限与进行中任务（13 号第 9 节）。
+    """
+
+    FOCUSED = "focused"
+    NORMAL = "normal"
+
+
+class CapacityBasis(StrEnum):
+    """当日容量的额度口径（13 号第 1 节 capacity_summary 的"额度来源"，取值为 T05 决策 A9）。
+
+    total 按"全天额度 − 已投入"计剩余；remaining 从用户声明时点起扣除，
+    不重复扣减已投入时间（03 第 4 节）。
+    """
+
+    TOTAL = "total"
+    REMAINING = "remaining"

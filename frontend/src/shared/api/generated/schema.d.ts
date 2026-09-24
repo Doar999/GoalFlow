@@ -4,6 +4,66 @@
  */
 
 export interface paths {
+    "/api/agendas/{local_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取某日安排
+         * @description 返回当前安排或缺失状态；读取不直接创建作业（05-module-contracts read_today）。
+         */
+        get: operations["read_agenda_api_agendas__local_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agendas/{local_date}/generation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 生成某日安排
+         * @description 保证该日期存在基于最新 planning revision 的安排；已有有效安排则去重返回（13 号第 8 节）。异步：返回 202 与作业引用。
+         */
+        post: operations["ensure_agenda_api_agendas__local_date__generation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agendas/{local_date}/task-constraints/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 设置单日任务约束
+         * @description 设置 must_do_today 或 locked，或清除既有约束；无法满足时返回容量冲突（13 号第 4 节）。
+         */
+        put: operations["constrain_today_task_api_agendas__local_date__task_constraints__task_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -161,6 +221,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 保存周额度版本
+         * @description 保存新的周额度版本；已有安排需要协调时在响应中明确标记（05-module-contracts）。
+         */
+        put: operations["update_availability_api_availability_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/availability/dates/{local_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 声明单日额度
+         * @description 修改当天总额或剩余额度并触发协调；不足以容纳现有安排时返回可见冲突（R08、Q04）。
+         */
+        put: operations["override_today_api_availability_dates__local_date__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/goals": {
         parameters: {
             query?: never;
@@ -175,6 +275,26 @@ export interface paths {
          * @description 从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。
          */
         post: operations["create_goal_api_goals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/scheduling-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 保存目标调度偏好
+         * @description 一次提交活动目标 focus 状态和排序，产生新 planning revision 并触发受影响安排重算（13 号第 8 节）。
+         */
+        put: operations["update_scheduling_preferences_api_goals_scheduling_preferences_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -673,12 +793,139 @@ export interface components {
             task_id: string;
         };
         /**
+         * AgendaItemView
+         * @description 当日一个任务的分配（13 号第 1 节 agenda_items）。首版没有起止时刻（R06）。
+         */
+        AgendaItemView: {
+            /**
+             * Allocated Minutes
+             * @description 分配分钟数；不超过任务剩余预计分钟
+             */
+            allocated_minutes: number;
+            /**
+             * Rank
+             * @description 当日执行顺序
+             */
+            rank: number;
+            /**
+             * Reason Codes
+             * @description 排序键、所选层级及原因码（13 号第 4 节）
+             */
+            reason_codes: components["schemas"]["SchedulingReasonCode"][];
+            /** Task Id */
+            task_id: string;
+            /**
+             * Task Spec Id
+             * @description 排期所依据的任务内容版本
+             */
+            task_spec_id: string;
+        };
+        /**
+         * AgendaResponse
+         * @description 某日的当前安排（05-module-contracts read_today）。
+         *
+         *     读取不直接创建作业：尚无排期结果时 current 为 null，前端据此调用 generation 端点。
+         */
+        AgendaResponse: {
+            /** @description 当前生效的排期结果；尚无时为 null */
+            current: components["schemas"]["AgendaRevisionView"] | null;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /**
+             * Planning Revision
+             * @description 当前排期协调入口版本
+             */
+            planning_revision: number;
+        };
+        /**
+         * AgendaRevisionStatus
+         * @description 单次排期结果状态（03 第 4 节 agenda_revisions.status）。
+         * @enum {string}
+         */
+        AgendaRevisionStatus: "ready" | "conflicted";
+        /**
+         * AgendaRevisionView
+         * @description 一次排期计算的完整结果（13 号第 1 节 SchedulingResult 的持久化形状）。
+         */
+        AgendaRevisionView: {
+            capacity: components["schemas"]["CapacitySummaryView"];
+            /** Change Proposals */
+            change_proposals: components["schemas"]["ChangeProposalView"][];
+            /** Conflicts */
+            conflicts: components["schemas"]["ConflictView"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deferred */
+            deferred: components["schemas"]["DeferredTaskView"][];
+            /** Id */
+            id: string;
+            /**
+             * Input Planning Revision
+             * @description 计算基于的 planning revision
+             */
+            input_planning_revision: number;
+            /** Items */
+            items: components["schemas"]["AgendaItemView"][];
+            /**
+             * Scheduling Policy Version
+             * @description 当时按哪版排期策略判定（Q08 可解释）
+             */
+            scheduling_policy_version: string;
+            status: components["schemas"]["AgendaRevisionStatus"];
+            /** Version No */
+            version_no: number;
+        };
+        /**
          * AuthSessionResponse
          * @description 当前用户与会话元数据。不包含会话令牌。
          */
         AuthSessionResponse: {
             session: components["schemas"]["SessionInfo"];
             user: components["schemas"]["AccountUser"];
+        };
+        /**
+         * AvailabilityVersionResponse
+         * @description 周额度版本（03 第 4 节 availability_versions）。
+         */
+        AvailabilityVersionResponse: {
+            /**
+             * Coordination Required
+             * @description 已有安排需要协调时为 true（05-module-contracts update_availability）
+             */
+            coordination_required: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Effective From
+             * Format: date
+             * @description 生效起始日期；按日期选择使用的版本
+             */
+            effective_from: string;
+            /** Id */
+            id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /** Version No */
+            version_no: number;
+            /**
+             * Weekly Minutes
+             * @description 周一至周日七个额度（分钟），键为 monday…sunday
+             */
+            weekly_minutes: {
+                [key: string]: number;
+            };
         };
         /** CancelJobRequest */
         CancelJobRequest: {
@@ -687,6 +934,43 @@ export interface components {
              * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
              */
             expected_revision: number;
+        };
+        /**
+         * CapacityBasis
+         * @description 当日容量的额度口径（13 号第 1 节 capacity_summary 的"额度来源"，取值为 T05 决策 A9）。
+         *
+         *     total 按"全天额度 − 已投入"计剩余；remaining 从用户声明时点起扣除，
+         *     不重复扣减已投入时间（03 第 4 节）。
+         * @enum {string}
+         */
+        CapacityBasis: "total" | "remaining";
+        /**
+         * CapacitySummaryView
+         * @description 当日额度汇总（13 号第 1 节 capacity_summary：额度来源、已投入、已保留和剩余分钟）。
+         */
+        CapacitySummaryView: {
+            /** @description 额度口径；total 按全天扣已投入，remaining 从声明时点起扣 */
+            basis: components["schemas"]["CapacityBasis"];
+            /**
+             * Quota Minutes
+             * @description 当日有效额度（分钟）
+             */
+            quota_minutes: number;
+            /**
+             * Remaining Minutes
+             * @description 当前剩余容量（分钟）
+             */
+            remaining_minutes: number;
+            /**
+             * Reserved Minutes
+             * @description 已保留（分钟）
+             */
+            reserved_minutes: number;
+            /**
+             * Spent Minutes
+             * @description 今日已投入（分钟）
+             */
+            spent_minutes: number;
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -701,6 +985,36 @@ export interface components {
              * @description 12–128 个字符，不得与账号标识相同
              */
             new_password: string;
+        };
+        /**
+         * ChangeProposalView
+         * @description 需要用户确认的变更建议（13 号第 6 节 pending change proposal）。
+         *
+         *     里程碑延期、增加总投入、降低某目标投入、移动用户锁定/进行中任务或影响
+         *     关联目标时不自动执行，生成待确认建议（D06）。
+         */
+        ChangeProposalView: {
+            /**
+             * Description
+             * @description 建议内容与理由
+             */
+            description: string;
+            /**
+             * Proposal Type
+             * @description 建议类型：deadline_extension / increase_investment / reduce_investment / move_locked_task / cross_goal_impact（取值随业务实现固定）
+             */
+            proposal_type: string;
+            /**
+             * Requires Confirmation
+             * @description 首版建议一律待确认（D06）
+             * @default true
+             */
+            requires_confirmation: boolean;
+            /**
+             * Task Ids
+             * @description 涉及的任务
+             */
+            task_ids?: string[];
         };
         /** CloseGoalRequest */
         CloseGoalRequest: {
@@ -726,6 +1040,43 @@ export interface components {
         ClosureKind: "completed" | "stopped";
         /** ConfirmProfileRequest */
         ConfirmProfileRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /**
+         * ConflictView
+         * @description 无法同时满足的硬约束或分钟缺口（13 号第 1、6 节）。
+         */
+        ConflictView: {
+            code: components["schemas"]["SchedulingReasonCode"];
+            /**
+             * Message
+             * @description 面向用户的问题说明（Q04）
+             */
+            message: string;
+            /**
+             * Minutes Gap
+             * @description 缺口分钟数；不适用时为空
+             */
+            minutes_gap?: number | null;
+            /**
+             * Task Ids
+             * @description 涉及的任务；必须项冲突时保留全部冲突项供用户选择
+             */
+            task_ids: string[];
+        };
+        /**
+         * ConstrainTaskRequest
+         * @description 设置或清除单日任务约束（05-module-contracts constrain_today_task）。
+         *
+         *     constraint_kind 为空表示清除该日该任务的既有约束。
+         */
+        ConstrainTaskRequest: {
+            /** @description must_do_today / locked；空值表示清除 */
+            constraint_kind?: components["schemas"]["TaskDayConstraintKind"] | null;
             /**
              * Expected Revision
              * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
@@ -762,6 +1113,60 @@ export interface components {
              * @description 对未达成项的记录说明
              */
             note?: string | null;
+        };
+        /**
+         * DailyOverrideKind
+         * @description 当天额度口径（03 第 4 节 daily_overrides.override_kind）。
+         *
+         *     total 是"今天共有多少时间"，remaining 是"从声明时点起还剩多少时间"；
+         *     两种口径不可混用，剩余容量计算方式不同（03 第 4 节）。
+         * @enum {string}
+         */
+        DailyOverrideKind: "total" | "remaining";
+        /**
+         * DailyOverrideResponse
+         * @description 单日额度声明（03 第 4 节 daily_overrides）。
+         */
+        DailyOverrideResponse: {
+            /**
+             * Coordination Required
+             * @description 已有安排需要协调时为 true
+             */
+            coordination_required: boolean;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /**
+             * Measured At
+             * Format: date-time
+             * @description 声明时间；remaining 口径从此刻起扣减
+             */
+            measured_at: string;
+            /** Minutes */
+            minutes: number;
+            /** @description total 与 remaining 是两种口径，不可混用 */
+            override_kind: components["schemas"]["DailyOverrideKind"];
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+        };
+        /**
+         * DeferredTaskView
+         * @description 未进入当天的任务及原因（13 号第 1 节 deferred_tasks）。
+         */
+        DeferredTaskView: {
+            /**
+             * Detail
+             * @description 面向用户的补充说明
+             */
+            detail?: string | null;
+            reason_code: components["schemas"]["SchedulingReasonCode"];
+            /** Task Id */
+            task_id: string;
         };
         /**
          * DependencyCheckStatus
@@ -870,6 +1275,17 @@ export interface components {
             title: string;
         };
         /**
+         * EnsureAgendaRequest
+         * @description 保证某日存在基于最新 planning revision 的安排（05-module-contracts ensure_agenda）。
+         */
+        EnsureAgendaRequest: {
+            /**
+             * Planning Revision
+             * @description 客户端已知的 planning revision；服务端以其判断是否需要重算
+             */
+            planning_revision?: number | null;
+        };
+        /**
          * ErrorCode
          * @description 对外错误码。
          * @enum {string}
@@ -952,6 +1368,14 @@ export interface components {
          * @enum {string}
          */
         GoalDomain: "general" | "learning" | "fitness";
+        /**
+         * GoalFocusStatus
+         * @description 目标调度偏好中的 focus 状态（03 第 4 节 focus_status 列，取值未在文档固定，T05 决策 A7）。
+         *
+         *     focused 只提升弹性任务排序权重，不越过硬期限与进行中任务（13 号第 9 节）。
+         * @enum {string}
+         */
+        GoalFocusStatus: "focused" | "normal";
         /**
          * GoalKind
          * @description 目标形态，由档案的时间边界推导（PRD D12 已确认）。
@@ -1215,6 +1639,21 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * OverrideDayRequest
+         * @description 声明单日额度（05-module-contracts override_today）。
+         */
+        OverrideDayRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /** Minutes */
+            minutes: number;
+            /** @description total=全天总额；remaining=从声明时点起的剩余 */
+            override_kind: components["schemas"]["DailyOverrideKind"];
+        };
         /** PauseGoalRequest */
         PauseGoalRequest: {
             /**
@@ -1346,6 +1785,24 @@ export interface components {
          * @enum {string}
          */
         PlanVersionStatus: "draft" | "active" | "superseded" | "discarded";
+        /**
+         * PreferenceInput
+         * @description 单个目标的调度偏好（03 第 4 节 goal_scheduling_preferences）。
+         */
+        PreferenceInput: {
+            /** @description focus 只提升弹性任务排序权重 */
+            focus_status: components["schemas"]["GoalFocusStatus"];
+            /**
+             * Goal Id
+             * @description 活动目标 ID
+             */
+            goal_id: string;
+            /**
+             * Rank
+             * @description 目标顺序，数值小者优先；只参与弹性任务取舍
+             */
+            rank: number;
+        };
         /**
          * ProfileDraftReadiness
          * @description 档案草稿的就绪状态（03 第 2 节）。
@@ -1659,6 +2116,31 @@ export interface components {
             /** Route Id */
             route_id: string;
         };
+        /**
+         * SchedulingPreferencesResponse
+         * @description 偏好保存结果：新的排期协调入口版本（05-module-contracts update_goal_priorities）。
+         */
+        SchedulingPreferencesResponse: {
+            /**
+             * Planning Revision
+             * @description 更新后的 planning revision；变化触发受影响安排重算
+             */
+            planning_revision: number;
+            /**
+             * Preferences
+             * @description 保存后的全部活动目标偏好
+             */
+            preferences: components["schemas"]["PreferenceInput"][];
+        };
+        /**
+         * SchedulingReasonCode
+         * @description 排期原因码（13-scheduling-engine.md 第 6 节）。
+         *
+         *     同时用于 agenda_items 的安排原因、deferred_tasks 的延期原因和 conflicts 的冲突类型；
+         *     具体语义随所在集合不同，字段描述里分别说明。
+         * @enum {string}
+         */
+        SchedulingReasonCode: "MANDATORY_CAPACITY_CONFLICT" | "WEEKLY_CAPACITY_CONFLICT" | "DEADLINE_RISK" | "DEPENDENCY_BLOCKED" | "MINIMUM_SESSION_UNFIT" | "CROSS_GOAL_IMPACT";
         /** SelectRouteRequest */
         SelectRouteRequest: {
             /**
@@ -1684,6 +2166,38 @@ export interface components {
             expires_at: string;
         };
         /**
+         * TaskConstraintResponse
+         * @description 单日任务约束的保存结果（05-module-contracts constrain_today_task）。
+         */
+        TaskConstraintResponse: {
+            constraint_kind: components["schemas"]["TaskDayConstraintKind"];
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /**
+             * Status
+             * @description active / cleared；清除保留历史行（Q08）
+             */
+            status: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
+         * TaskDayConstraintKind
+         * @description 单日任务约束（03 第 4 节 task_day_constraints.constraint_kind）。
+         *
+         *     must_do_today 固定日期；locked 还固定当前分配分钟数（13 号第 4 节）。
+         * @enum {string}
+         */
+        TaskDayConstraintKind: "must_do_today" | "locked";
+        /**
          * TaskExecutionStatus
          * @description 任务执行状态（03 第 3 节）。
          *
@@ -1704,6 +2218,30 @@ export interface components {
              * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
              */
             expected_revision: number;
+        };
+        /**
+         * UpdateAvailabilityRequest
+         * @description 提交周额度与生效日期（05-module-contracts update_availability）。
+         */
+        UpdateAvailabilityRequest: {
+            /**
+             * Effective From
+             * Format: date
+             * @description 生效起始日期；旧版本保留，按日期选择
+             */
+            effective_from: string;
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /**
+             * Weekly Minutes
+             * @description 周一至周日七个额度（分钟），键为 monday…sunday
+             */
+            weekly_minutes: {
+                [key: string]: number;
+            };
         };
         /** UpdateDraftTaskRequest */
         UpdateDraftTaskRequest: {
@@ -1739,6 +2277,19 @@ export interface components {
             expected_revision: number;
         };
         /**
+         * UpdateSchedulingPreferencesRequest
+         * @description 一次提交全部活动目标的 focus 状态与顺序（13 号第 8 节）。
+         */
+        UpdateSchedulingPreferencesRequest: {
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+            /** Preferences */
+            preferences: components["schemas"]["PreferenceInput"][];
+        };
+        /**
          * UserRole
          * @description 账号角色。首位注册者不自动成为管理员，只能由部署者本地命令授予。
          * @enum {string}
@@ -1766,6 +2317,206 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    read_agenda_api_agendas__local_date__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 用户本地日期，格式 YYYY-MM-DD */
+                local_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgendaResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 日程、任务、目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ensure_agenda_api_agendas__local_date__generation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 用户本地日期，格式 YYYY-MM-DD */
+                local_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnsureAgendaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 日程、任务、目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    constrain_today_task_api_agendas__local_date__task_constraints__task_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 用户本地日期，格式 YYYY-MM-DD */
+                local_date: string;
+                /** @description 任务 ID */
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConstrainTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskConstraintResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 日程、任务、目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -2116,6 +2867,142 @@ export interface operations {
             };
         };
     };
+    update_availability_api_availability_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAvailabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityVersionResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    override_today_api_availability_dates__local_date__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 用户本地日期，格式 YYYY-MM-DD */
+                local_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverrideDayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyOverrideResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 日程、任务、目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     create_goal_api_goals_post: {
         parameters: {
             query?: never;
@@ -2159,6 +3046,77 @@ export interface operations {
                 };
             };
             /** @description 版本已更新（REVISION_CONFLICT）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、目标状态不允许该操作（GOAL_STATE_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_scheduling_preferences_api_goals_scheduling_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSchedulingPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingPreferencesResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 日程、任务、目标或相关资源不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
