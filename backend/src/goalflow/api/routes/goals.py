@@ -1,4 +1,4 @@
-"""目标与计划接口（T04 契约 PR）：目标、档案草稿、路线、计划草稿与生命周期命令。
+"""目标与计划接口（T04 PR-2）：目标、档案草稿、路线、计划草稿与生命周期命令。
 
 端点清单的出处：
 
@@ -7,9 +7,9 @@
 - 17-goal-lifecycle-design.md 第 1 节：pause / resume / close / undo_closure / derive 命令，
   激活不设独立端点——activate_plan 在同一事务内完成目标 draft → active（T04 决策 A10）。
 
-本 PR 只交付**契约形状**：请求/响应模型与端点定义。处理函数为桩，返回
-INTERNAL_ERROR（"实现在 T04 业务实现 PR 交付"）；幂等键依赖与身份依赖已挂在路由上，
-使 Idempotency-Key 要求与"身份只从服务端会话获得"两条全局约束进入契约文档。
+四个模型生成类端点（route-generations、route-variants、plan-generations、
+plan-change-requests）保持契约桩：生成候选由 T08 的 Agent 图提供后接入
+（交接卡决策 A1），其余端点均调用 goals 模块的 Interface。
 """
 
 from datetime import date, datetime
@@ -18,7 +18,7 @@ from typing import Annotated, Any, Final, NoReturn
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
-from goalflow.api.dependencies import CurrentUserDep, require_idempotency_key
+from goalflow.api.dependencies import CurrentUserDep, DatabaseDep, require_idempotency_key
 from goalflow.api.routes.jobs import JobResponse
 from goalflow.contracts.enums import (
     ClosureKind,
@@ -36,6 +36,17 @@ from goalflow.contracts.enums import (
 )
 from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import ErrorResponse, RevisionedRequest, RevisionedResource
+from goalflow.goals import lifecycle, service
+from goalflow.goals.lifecycle import ActivationOutcome, TransitionView
+from goalflow.goals.service import (
+    DraftTaskView,
+    GoalView,
+    PlanDraftView,
+    ProfileDraftView,
+    ProfileView,
+    RouteSetView,
+    RouteView,
+)
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 
@@ -49,7 +60,7 @@ _ERROR_DESCRIPTIONS: Final = {
         "或时间预算冲突（BUDGET_CONFLICT）"
     ),
     422: "请求参数校验未通过",
-    500: "接口尚未实现（实现在 T04 业务实现 PR 交付）",
+    500: "接口尚未实现（生成类端点随 T08 Agent 作业接入交付）",
     503: "生成依赖的模型服务暂不可用（MODEL_UNAVAILABLE）",
 }
 
@@ -63,11 +74,11 @@ TaskIdPath = Annotated[str, Path(max_length=36, description="任务 ID")]
 IdempotencyKeyDep = Annotated[str, Depends(require_idempotency_key)]
 
 
-def _not_implemented() -> NoReturn:
-    """契约桩：形状已定，处理逻辑随 T04 业务实现 PR 交付。"""
+def _generation_stub() -> NoReturn:
+    """生成类端点的契约桩：候选由 T08 的 Agent 图提供后接入（交接卡决策 A1）。"""
     raise GoalflowError(
         ErrorCode.INTERNAL_ERROR,
-        "该接口尚未实现，实现在 T04 业务实现 PR 中交付",
+        "该端点随 T08 Agent 生成作业接入交付",
     )
 
 
@@ -152,11 +163,11 @@ class ProfileResponse(BaseModel):
 class DerivedMetric(BaseModel):
     """服务端计算的路线派生指标，模型不能覆盖（11 号第 4 节）。"""
 
-    total_estimated_minutes: int
-    peak_weekly_minutes: int
-    available_weekly_minutes: int
-    budget_gap_minutes: int
-    recommendation_eligible: bool
+    total_estimated_minutes: int = 0
+    peak_weekly_minutes: int = 0
+    available_weekly_minutes: int = 0
+    budget_gap_minutes: int = 0
+    recommendation_eligible: bool = False
     conflicts: list[dict[str, Any]] = Field(default_factory=list, description="预算、期限或与其他目标的冲突")
 
 
@@ -319,7 +330,11 @@ class PlanChangeRequest(RevisionedRequest):
 
 class ActivatePlanRequest(RevisionedRequest):
     draft_plan_id: str = Field(max_length=36)
-    planning_revision: int = Field(ge=0, description="客户端读到的 planning revision；过期返回 INPUT_STALE")
+    planning_revision: int | None = Field(
+        default=None,
+        ge=0,
+        description="客户端读到的 planning revision；T05 交付前可省略（省略时跳过 stale 判定）",
+    )
 
 
 class PauseGoalRequest(RevisionedRequest):
@@ -346,7 +361,148 @@ class DeriveGoalRequest(RevisionedRequest):
     pass
 
 
-# —— 端点定义 ——
+# —— 视图 → 响应模型 ——
+
+
+def _goal_response(view: GoalView) -> GoalResponse:
+    return GoalResponse(
+        id=view.id,
+        title=view.title,
+        domain=GoalDomain(view.domain),
+        domain_confidence=view.domain_confidence,
+        kind=GoalKind(view.kind),
+        status=GoalStatus(view.status),
+        review_period=ReviewPeriod(view.review_period),
+        active_profile_id=view.active_profile_id,
+        current_plan_version_id=view.current_plan_version_id,
+        source_goal_id=view.source_goal_id,
+        paused_at=view.paused_at,
+        pause_reason=view.pause_reason,
+        closed_at=view.closed_at,
+        closure_kind=ClosureKind(view.closure_kind) if view.closure_kind else None,
+        closure_note=view.closure_note,
+        revision=view.revision,
+        created_at=view.created_at,
+        updated_at=view.updated_at,
+    )
+
+
+def _transition_response(view: TransitionView) -> GoalTransitionResponse:
+    goal = _goal_response(view.goal)
+    return GoalTransitionResponse(
+        **goal.model_dump(),
+        affected_dependent_tasks=[
+            AffectedDependency(goal_id=item.goal_id, task_id=item.task_id) for item in view.affected_dependent_tasks
+        ],
+        dependency_check=view.dependency_check,
+    )
+
+
+def _draft_response(view: ProfileDraftView) -> ProfileDraftResponse:
+    return ProfileDraftResponse(
+        goal_id=view.goal_id,
+        content=view.content,
+        source_map=view.source_map,
+        gaps=view.gaps,
+        assumptions=view.assumptions,
+        contradictions=view.contradictions,
+        readiness=ProfileDraftReadiness(view.readiness),
+        revision=view.revision,
+        updated_at=view.updated_at,
+    )
+
+
+def _profile_response(view: ProfileView) -> ProfileResponse:
+    return ProfileResponse(
+        id=view.id,
+        goal_id=view.goal_id,
+        version_no=view.version_no,
+        result_definition=view.result_definition,
+        success_criteria=view.success_criteria,
+        baseline=view.baseline,
+        constraints=view.constraints,
+        facts=view.facts,
+        confirmed_at=view.confirmed_at,
+    )
+
+
+def _route_response(view: RouteView) -> RouteResponse:
+    return RouteResponse(
+        id=view.id,
+        route_set_id=view.route_set_id,
+        status=RouteStatus(view.status),
+        based_on_route_id=view.based_on_route_id,
+        title=view.title,
+        approach=view.approach,
+        difference_keys=view.difference_keys,
+        duration_range=view.duration_range,
+        phase_outline=view.phase_outline,
+        weekly_minutes=view.weekly_minutes,
+        tradeoffs=view.tradeoffs,
+        risks=view.risks,
+        assumptions=view.assumptions,
+        required_resources=view.required_resources,
+        derived_metrics=DerivedMetric(**view.derived_metrics),
+        revision=view.revision,
+        created_at=view.created_at or datetime.now(),
+    )
+
+
+def _route_set_response(view: RouteSetView) -> RouteSetResponse:
+    return RouteSetResponse(
+        id=view.id,
+        goal_id=view.goal_id,
+        profile_id=view.profile_id,
+        status=RouteSetStatus(view.status),
+        invalidated_reason=view.invalidated_reason,
+        planning_revision=view.planning_revision,
+        availability_revision=view.availability_revision,
+        routes=[_route_response(route) for route in view.routes],
+        revision=view.revision,
+        created_at=view.created_at or datetime.now(),
+    )
+
+
+def _task_response(view: DraftTaskView) -> DraftTaskResponse:
+    return DraftTaskResponse(
+        task_id=view.task_id,
+        spec_no=view.spec_no,
+        title=view.title,
+        executor=TaskExecutor(view.executor),
+        expected_minutes=view.expected_minutes,
+        minimum_minutes=view.minimum_minutes,
+        maximum_minutes=view.maximum_minutes,
+        can_split=view.can_split,
+        minimum_session_minutes=view.minimum_session_minutes,
+        earliest_date=date.fromisoformat(view.earliest_date) if view.earliest_date else None,
+        latest_date=date.fromisoformat(view.latest_date),
+        execution_status=TaskExecutionStatus(view.execution_status),
+        phase_id=view.phase_id,
+        milestone_id=view.milestone_id,
+        batch_window=view.batch_window,
+        revision=view.revision,
+    )
+
+
+def _plan_draft_response(view: PlanDraftView) -> PlanDraftResponse:
+    return PlanDraftResponse(
+        plan_version_id=view.plan_version_id,
+        goal_id=view.goal_id,
+        status=PlanVersionStatus(view.status),
+        start_date=date.fromisoformat(view.start_date),
+        horizon_end=date.fromisoformat(view.horizon_end) if view.horizon_end else None,
+        detailed_through_date=date.fromisoformat(view.detailed_through_date) if view.detailed_through_date else None,
+        phases=[PlanPhaseResponse(**phase) for phase in view.phases],
+        milestones=[PlanMilestoneResponse(**milestone) for milestone in view.milestones],
+        tasks=[_task_response(task) for task in view.tasks],
+        conflicts=view.conflicts,
+        stale=view.stale,
+        stale_reason=view.stale_reason,
+        revision=view.revision,
+    )
+
+
+# —— 端点 ——
 
 
 @router.post(
@@ -354,44 +510,55 @@ class DeriveGoalRequest(RevisionedRequest):
     summary="创建目标",
     description="从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。",
     status_code=201,
-    responses=_errors(401, 403, 409, 422, 500),
+    responses=_errors(401, 403, 409, 422),
 )
 def create_goal(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     request: CreateGoalRequest,
 ) -> GoalResponse:
-    _not_implemented()
+    view = service.create_goal(
+        db,
+        user,
+        title=request.title,
+        initial_description=request.initial_description,
+        idempotency_key=idempotency_key,
+    )
+    return _goal_response(view)
 
 
 @router.get(
     "/{goal_id}",
     summary="读取目标",
-    responses=_errors(401, 404, 500),
+    responses=_errors(401, 404),
 )
-def read_goal(_user: CurrentUserDep, goal_id: GoalIdPath) -> GoalResponse:
-    _not_implemented()
+def read_goal(user: CurrentUserDep, db: DatabaseDep, goal_id: GoalIdPath) -> GoalResponse:
+    return _goal_response(service.get_goal(db, user, goal_id))
 
 
 @router.get(
     "/{goal_id}/profile-draft",
     summary="读取档案草稿",
     description="返回草稿字段、来源、缺口、假设、矛盾及 readiness（05 第 2 节）。",
-    responses=_errors(401, 404, 500),
+    responses=_errors(401, 404),
 )
-def read_profile_draft(_user: CurrentUserDep, goal_id: GoalIdPath) -> ProfileDraftResponse:
-    _not_implemented()
+def read_profile_draft(user: CurrentUserDep, db: DatabaseDep, goal_id: GoalIdPath) -> ProfileDraftResponse:
+    return _draft_response(service.get_profile_draft(db, user, goal_id))
 
 
 @router.patch(
     "/{goal_id}/profile-draft",
     summary="编辑档案草稿",
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def update_profile_draft(
-    _user: CurrentUserDep, goal_id: GoalIdPath, request: UpdateProfileDraftRequest
+    user: CurrentUserDep, db: DatabaseDep, goal_id: GoalIdPath, request: UpdateProfileDraftRequest
 ) -> ProfileDraftResponse:
-    _not_implemented()
+    view = service.update_profile_draft(
+        db, user, goal_id, edits=request.edits, expected_revision=request.expected_revision
+    )
+    return _draft_response(view)
 
 
 @router.post(
@@ -402,15 +569,19 @@ def update_profile_draft(
         "（03 第 2 节）。模型晚返回时草稿 revision 不匹配的结果被拒。"
     ),
     status_code=201,
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def confirm_profile(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: ConfirmProfileRequest,
 ) -> ProfileResponse:
-    _not_implemented()
+    view = service.confirm_profile(
+        db, user, goal_id, expected_revision=request.expected_revision, idempotency_key=idempotency_key
+    )
+    return _profile_response(view)
 
 
 @router.post(
@@ -426,17 +597,17 @@ def generate_routes(
     goal_id: GoalIdPath,
     request: GenerateRoutesRequest,
 ) -> JobResponse:
-    _not_implemented()
+    _generation_stub()
 
 
 @router.get(
     "/{goal_id}/route-sets/current",
     summary="读取当前路线集合",
     description="返回当前集合、统一比较字段、派生冲突和 stale 状态（11 号第 8 节）。",
-    responses=_errors(401, 404, 500),
+    responses=_errors(401, 404),
 )
-def read_current_routes(_user: CurrentUserDep, goal_id: GoalIdPath) -> RouteSetResponse:
-    _not_implemented()
+def read_current_routes(user: CurrentUserDep, db: DatabaseDep, goal_id: GoalIdPath) -> RouteSetResponse:
+    return _route_set_response(service.get_current_route_set(db, user, goal_id))
 
 
 @router.post(
@@ -452,21 +623,32 @@ def revise_route(
     goal_id: GoalIdPath,
     request: RouteVariantRequest,
 ) -> JobResponse:
-    _not_implemented()
+    _generation_stub()
 
 
 @router.post(
     "/{goal_id}/route-selection",
     summary="记录路线选择",
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def select_route(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: SelectRouteRequest,
 ) -> RouteSelectionResponse:
-    _not_implemented()
+    view = service.select_route(
+        db,
+        user,
+        goal_id,
+        route_id=request.route_id,
+        expected_revision=request.expected_revision,
+        idempotency_key=idempotency_key,
+    )
+    return RouteSelectionResponse(
+        goal_id=view.goal_id, route_id=view.route_id, selected_at=view.selected_at, revision=view.revision
+    )
 
 
 @router.post(
@@ -474,7 +656,7 @@ def select_route(
     summary="提交计划草稿生成作业",
     description=(
         "由选定路线生成计划草稿与首个七日任务批次（12 号第 2 节）。不启用。"
-        "开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期。"
+        "开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期（12 号第 2 节）。"
     ),
     status_code=202,
     responses=_errors(401, 403, 404, 409, 422, 500, 503),
@@ -485,29 +667,45 @@ def generate_plan(
     goal_id: GoalIdPath,
     request: GeneratePlanRequest,
 ) -> JobResponse:
-    _not_implemented()
+    _generation_stub()
 
 
 @router.get(
     "/{goal_id}/plan-drafts/current",
     summary="读取计划草稿",
     description="返回阶段、里程碑、七日任务批次、冲突和 stale 状态（05 第 2 节）。",
-    responses=_errors(401, 404, 500),
+    responses=_errors(401, 404),
 )
-def read_plan_draft(_user: CurrentUserDep, goal_id: GoalIdPath) -> PlanDraftResponse:
-    _not_implemented()
+def read_plan_draft(user: CurrentUserDep, db: DatabaseDep, goal_id: GoalIdPath) -> PlanDraftResponse:
+    return _plan_draft_response(service.get_plan_draft(db, user, goal_id))
 
 
 @router.patch(
     "/{goal_id}/plan-drafts/current/tasks/{task_id}",
     summary="编辑草稿任务",
     description="创建新 task_spec，保留原版本（03 第 3 节）。",
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def update_draft_task(
-    _user: CurrentUserDep, goal_id: GoalIdPath, task_id: TaskIdPath, request: UpdateDraftTaskRequest
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    goal_id: GoalIdPath,
+    task_id: TaskIdPath,
+    request: UpdateDraftTaskRequest,
 ) -> DraftTaskResponse:
-    _not_implemented()
+    view = service.update_draft_task(
+        db,
+        user,
+        goal_id,
+        task_id,
+        expected_revision=request.expected_revision,
+        title=request.title,
+        instructions=request.instructions,
+        expected_minutes=request.expected_minutes,
+        minimum_minutes=request.minimum_minutes,
+        maximum_minutes=request.maximum_minutes,
+    )
+    return _task_response(view)
 
 
 @router.post(
@@ -523,7 +721,7 @@ def request_plan_change(
     goal_id: GoalIdPath,
     request: PlanChangeRequest,
 ) -> JobResponse:
-    _not_implemented()
+    _generation_stub()
 
 
 @router.post(
@@ -533,15 +731,30 @@ def request_plan_change(
         "幂等启用：同一事务内切换计划为 active、目标 draft → active（T04 决策 A10）、"
         "首批 proposed 任务转为 pending，并触发当日安排重算。预算冲突不部分启用。"
     ),
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def activate_plan(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: ActivatePlanRequest,
 ) -> ActivationResponse:
-    _not_implemented()
+    outcome: ActivationOutcome = lifecycle.activate_plan(
+        db,
+        user,
+        goal_id,
+        draft_plan_id=request.draft_plan_id,
+        expected_revision=request.expected_revision,
+        planning_revision=request.planning_revision,
+        idempotency_key=idempotency_key,
+    )
+    return ActivationResponse(
+        goal_id=outcome.goal.id,
+        plan_version_id=outcome.plan_version_id,
+        first_batch_window=outcome.batch_window,
+        activated_at=outcome.activated_at,
+    )
 
 
 @router.post(
@@ -550,30 +763,48 @@ def activate_plan(
     description=(
         "active → paused。不改写任何任务状态，周投入需求从共享预算释放；响应携带受影响的跨目标依赖（D12 第 5 节）。"
     ),
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def pause_goal(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: PauseGoalRequest,
 ) -> GoalTransitionResponse:
-    _not_implemented()
+    view = lifecycle.pause_goal(
+        db,
+        user,
+        goal_id,
+        expected_revision=request.expected_revision,
+        reason=request.reason,
+        idempotency_key=idempotency_key,
+    )
+    return _transition_response(view)
 
 
 @router.post(
     "/{goal_id}/resume",
     summary="恢复目标",
-    description=("paused → active。不把积压任务搬到今天；共享预算已被占满时返回冲突供取舍（D12 第 5 节）。"),
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    description=("paused → active。不把积压任务搬到今天；共享预算被占满时返回冲突供取舍（D12 第 5 节）。"),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def resume_goal(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: ResumeGoalRequest,
 ) -> GoalTransitionResponse:
-    _not_implemented()
+    return _transition_response(
+        lifecycle.resume_goal(
+            db,
+            user,
+            goal_id,
+            expected_revision=request.expected_revision,
+            idempotency_key=idempotency_key,
+        )
+    )
 
 
 @router.post(
@@ -581,32 +812,52 @@ def resume_goal(
     summary="结束目标",
     description=(
         "active → completed / stopped，终态不可逆。completed 仅对达成型开放；"
-        "成功标准逐条确认随操作写入快照（17 号第 4 节）。"
+        "成功标准逐条确认随操作写入快照，撤销后可还原（17 号第 4 节）。"
     ),
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def close_goal(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: CloseGoalRequest,
 ) -> GoalResponse:
-    _not_implemented()
+    view = lifecycle.close_goal(
+        db,
+        user,
+        goal_id,
+        expected_revision=request.expected_revision,
+        closure_kind=request.closure_kind,
+        note=request.note,
+        criteria_confirmations=[item.model_dump() for item in request.criteria_confirmations],
+        idempotency_key=idempotency_key,
+    )
+    return _goal_response(view)
 
 
 @router.post(
     "/{goal_id}/closure-undo",
     summary="撤销结束",
     description=("结束操作后 24 小时内可撤销，回到结束前状态（D12 第 6 节）；窗口外返回 GOAL_STATE_CONFLICT。"),
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def undo_closure(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: UndoClosureRequest,
 ) -> GoalResponse:
-    _not_implemented()
+    return _goal_response(
+        lifecycle.undo_closure(
+            db,
+            user,
+            goal_id,
+            expected_revision=request.expected_revision,
+            idempotency_key=idempotency_key,
+        )
+    )
 
 
 @router.post(
@@ -616,12 +867,21 @@ def undo_closure(
         "复制源目标最新档案内容为新目标的档案草稿，不复制计划、任务与执行记录；源目标保持终态（17 号第 4 节）。"
     ),
     status_code=201,
-    responses=_errors(401, 403, 404, 409, 422, 500),
+    responses=_errors(401, 403, 404, 409, 422),
 )
 def derive_goal(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    db: DatabaseDep,
+    idempotency_key: IdempotencyKeyDep,
     goal_id: GoalIdPath,
     request: DeriveGoalRequest,
 ) -> GoalResponse:
-    _not_implemented()
+    return _goal_response(
+        lifecycle.derive_goal(
+            db,
+            user,
+            goal_id,
+            expected_revision=request.expected_revision,
+            idempotency_key=idempotency_key,
+        )
+    )

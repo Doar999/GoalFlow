@@ -229,7 +229,7 @@ export interface paths {
         put?: never;
         /**
          * 结束目标
-         * @description active → completed / stopped，终态不可逆。completed 仅对达成型开放；成功标准逐条确认随操作写入快照（17 号第 4 节）。
+         * @description active → completed / stopped，终态不可逆。completed 仅对达成型开放；成功标准逐条确认随操作写入快照，撤销后可还原（17 号第 4 节）。
          */
         post: operations["close_goal_api_goals__goal_id__closure_post"];
         delete?: never;
@@ -369,7 +369,7 @@ export interface paths {
         put?: never;
         /**
          * 提交计划草稿生成作业
-         * @description 由选定路线生成计划草稿与首个七日任务批次（12 号第 2 节）。不启用。开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期。
+         * @description 由选定路线生成计划草稿与首个七日任务批次（12 号第 2 节）。不启用。开始日剩余容量容纳不下任何任务时草稿照常保存并返回建议前移日期（12 号第 2 节）。
          */
         post: operations["generate_plan_api_goals__goal_id__plan_generations_post"];
         delete?: never;
@@ -430,7 +430,7 @@ export interface paths {
         put?: never;
         /**
          * 恢复目标
-         * @description paused → active。不把积压任务搬到今天；共享预算已被占满时返回冲突供取舍（D12 第 5 节）。
+         * @description paused → active。不把积压任务搬到今天；共享预算被占满时返回冲突供取舍（D12 第 5 节）。
          */
         post: operations["resume_goal_api_goals__goal_id__resume_post"];
         delete?: never;
@@ -627,9 +627,9 @@ export interface components {
             expected_revision: number;
             /**
              * Planning Revision
-             * @description 客户端读到的 planning revision；过期返回 INPUT_STALE
+             * @description 客户端读到的 planning revision；T05 交付前可省略（省略时跳过 stale 判定）
              */
-            planning_revision: number;
+            planning_revision?: number | null;
         };
         /**
          * ActivationResponse
@@ -785,9 +785,15 @@ export interface components {
          * @description 服务端计算的路线派生指标，模型不能覆盖（11 号第 4 节）。
          */
         DerivedMetric: {
-            /** Available Weekly Minutes */
+            /**
+             * Available Weekly Minutes
+             * @default 0
+             */
             available_weekly_minutes: number;
-            /** Budget Gap Minutes */
+            /**
+             * Budget Gap Minutes
+             * @default 0
+             */
             budget_gap_minutes: number;
             /**
              * Conflicts
@@ -796,11 +802,20 @@ export interface components {
             conflicts?: {
                 [key: string]: unknown;
             }[];
-            /** Peak Weekly Minutes */
+            /**
+             * Peak Weekly Minutes
+             * @default 0
+             */
             peak_weekly_minutes: number;
-            /** Recommendation Eligible */
+            /**
+             * Recommendation Eligible
+             * @default false
+             */
             recommendation_eligible: boolean;
-            /** Total Estimated Minutes */
+            /**
+             * Total Estimated Minutes
+             * @default 0
+             */
             total_estimated_minutes: number;
         };
         /**
@@ -2161,15 +2176,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     read_goal_api_goals__goal_id__get: {
@@ -2218,15 +2224,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -2296,15 +2293,6 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2386,15 +2374,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     undo_closure_api_goals__goal_id__closure_undo_post: {
@@ -2462,15 +2441,6 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2552,15 +2522,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     pause_goal_api_goals__goal_id__pause_post: {
@@ -2628,15 +2589,6 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2718,7 +2670,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            /** @description 接口尚未实现（生成类端点随 T08 Agent 作业接入交付） */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -2784,15 +2736,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -2862,15 +2805,6 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2952,7 +2886,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            /** @description 接口尚未实现（生成类端点随 T08 Agent 作业接入交付） */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3044,15 +2978,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     read_profile_draft_api_goals__goal_id__profile_draft_get: {
@@ -3101,15 +3026,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3177,15 +3093,6 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3267,15 +3174,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     generate_routes_api_goals__goal_id__route_generations_post: {
@@ -3350,7 +3248,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            /** @description 接口尚未实现（生成类端点随 T08 Agent 作业接入交付） */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3442,15 +3340,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     read_current_routes_api_goals__goal_id__route_sets_current_get: {
@@ -3499,15 +3388,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3584,7 +3464,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（实现在 T04 业务实现 PR 交付） */
+            /** @description 接口尚未实现（生成类端点随 T08 Agent 作业接入交付） */
             500: {
                 headers: {
                     [name: string]: unknown;

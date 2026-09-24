@@ -9,7 +9,9 @@
 
 import argparse
 import shutil
+import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,12 +19,15 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from goalflow.api.app import create_app
 from goalflow.api.dependencies import get_auth_service
-from goalflow.auth.service import AuthConfig, AuthService
+from goalflow.auth.service import AuthConfig, AuthService, CurrentUser
+from goalflow.contracts.enums import UserRole
 from goalflow.db.engine import create_database_engine
+from goalflow.db.session import Database, get_database
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ORIGIN = "http://testserver"
@@ -80,6 +85,8 @@ def app(migrated_template: Path, tmp_path: Path) -> Iterator[FastAPI]:
         )
         application = create_app()
         application.dependency_overrides[get_auth_service] = lambda: service
+        # goals 路由经 DatabaseDep 拿库；不覆盖的话会指向开发库（get_database 全局单例）。
+        application.dependency_overrides[get_database] = lambda: database
         yield application
     finally:
         database.dispose()
@@ -100,3 +107,40 @@ def authed_client(client: TestClient) -> TestClient:
     )
     assert response.status_code == 201, response.text
     return client
+
+
+@pytest.fixture
+def database(migrated_template: Path, tmp_path: Path) -> Iterator[Database]:
+    """业务层测试用的 Database 实例：Interface 函数自己开事务（T03 决策 C3）。"""
+    db_path = tmp_path / "service.db"
+    shutil.copyfile(migrated_template, db_path)
+    database = Database(create_database_engine(_sqlite_url(db_path)))
+    try:
+        yield database
+    finally:
+        database.dispose()
+
+
+@pytest.fixture
+def user(database: Database) -> CurrentUser:
+    """直连业务层用的请求身份；users 行真实落库以满足外键。"""
+    user_id = str(uuid.uuid4())
+    now = datetime.now(UTC).isoformat(timespec="microseconds")
+    with database.engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (id, account_identifier, role, status, timezone, revision, created_at, updated_at)"
+                " VALUES (:id, 'goals-service@local.dev', 'user', 'active', 'UTC', 0, :now, :now)"
+            ),
+            {"id": user_id, "now": now},
+        )
+    moment = datetime.now(UTC)
+    return CurrentUser(
+        user_id=user_id,
+        account_identifier="goals-service@local.dev",
+        role=UserRole.USER,
+        timezone="UTC",
+        session_id=str(uuid.uuid4()),
+        session_created_at=moment,
+        session_expires_at=moment + timedelta(days=1),
+    )

@@ -36,18 +36,17 @@ class TestStubEndpoints:
         assert body["code"] == "UNAUTHENTICATED"
         assert body["retryable"] is False
 
-    def test_stub_handlers_announce_themselves(self, authed_client) -> None:
-        response = authed_client.post(
-            "/api/goals",
-            json={"title": "三个月跑完十公里"},
-            headers={"Idempotency-Key": "t04-contract-stub"},
-        )
-        assert response.status_code == 500
-        body = response.json()
-        assert body["code"] == "INTERNAL_ERROR"
-        # INTERNAL_ERROR 按契约可重试（errors.py RETRYABLE_ERROR_CODES）。
-        assert body["retryable"] is True
-        assert "T04" in body["message"]
+    def test_create_goal_over_http_is_idempotent(self, authed_client) -> None:
+        """契约里"相同 key 重放返回同一资源"在 HTTP 层的行为（01 第 5 节）。"""
+        payload = {"title": "三个月跑完十公里"}
+        headers = {"Idempotency-Key": "t04-contract-stub"}
+        first = authed_client.post("/api/goals", json=payload, headers=headers)
+        assert first.status_code == 201, first.text
+        body = first.json()
+        assert body["status"] == "draft"
+        second = authed_client.post("/api/goals", json=payload, headers=headers)
+        assert second.status_code == 201
+        assert second.json()["id"] == body["id"]
 
 
 class TestGoalsCheckConstraints:
