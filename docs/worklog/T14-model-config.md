@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T14（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | Giraffe12311（前后端与数据负责人） |
-| 状态 | 进行中：契约面（PR-1）实现中 |
+| 状态 | 进行中：PR-1 已合并（#26）；PR-2 业务实现完成，待用户批准提交 |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | #（待填） |
+| 相关 PR | #26（PR-1 契约面，已合并）；PR-2 待建 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -103,39 +103,51 @@ backend/src/goalflow/auth/、goals/、links/、scheduling/、jobs/ 的模块代�
 
 ## 6. 进展
 
-- 已完成：设计依据与既有代码结构核对；分支 feat/T14-model-config 建立（基于 c8dd6f8）；本交接卡；**PR-1 契约面全部实现并通过验证**（迁移 0007、model_configs 模块 ORM、契约枚举与错误码、6 端点契约桩、允许列表环境变量 A13、OpenAPI 与前端类型导出、前端错误码文案表补齐）。
-- 修订记录：提交前按用户提示扫描全库文档，据产品 06 号与既有先例修订决策 A4 并新增 A11–A14（Key 可选、禁用独立操作、允许列表载体、频控阈值），契约面已同步。
-- 待办：向仓库负责人展示预提交清单并获批准 → 提交 PR-1。
-- 未开始：PR-2 业务实现（信封加密、出站校验、/test 真实调用、默认切换事务、限流、验收测试）。
+- 已完成：PR-1 契约面（#26 已合并）；**PR-2 业务实现完成并通过验证**——信封加密（crypto.py，AES-GCM 双层信封 + 密钥版本）、出站校验（outbound.py，协议/端口/DNS/内网段黑名单/允许列表，调用前重校验）、/test 真实调用（probes.py，直接构造 chat model，三探测：基本生成/结构化输出/流式，max_retries=1、timeout 15s、错误五类脱敏分类）、六端点接线、频控兜底（1000 次/15 分钟，决策 A14）、默认切换事务、61 条模块测试。
+- 修订记录：提交 PR-1 前按用户提示扫描全库文档，据产品 06 号与既有先例修订决策 A4 并新增 A11–A13（Key 可选、禁用独立操作、允许列表载体），契约面已同步；A14（/test 频控）经两轮调整定为**仅作滥用兜底（每用户 1000 次/15 分钟）**。
+- 待办：向仓库负责人展示 PR-2 预提交清单并获批准 → 提交 → 建 PR。
+- PR-3 收尾（交接卡状态改写、验收勾选）随后。
 
 ## 7. 验证结果
 
-以下均为真实执行（2026-09-24，Windows / Git Bash；数据库相关用例由套件内 fixture 在与生产同构的 SQLite 配置上执行——真实库文件、同一组 pragma）：
+以下均为真实执行（2026-09-24，Windows / Git Bash；数据库相关用例由套件内 fixture 在与生产同构的 SQLite 配置上执行——真实库文件、同一组 pragma）。
+
+**PR-1（#26）：**
 
 ```text
-$ uv run --project backend ruff format backend
-2 files reformatted, 126 files left unchanged
-
-$ uv run --project backend ruff check backend
-All checks passed!
-
-$ uv run --project backend mypy --config-file backend/pyproject.toml backend/src
-Success: no issues found in 62 source files
-
-$ uv lock --project backend --check
-Resolved 98 packages in 1ms        （锁文件无漂移）
-
 $ uv run --project backend pytest backend/tests -rf --tb=line
-376 passed, 0 failed（进度点无 F、-rf 无失败摘要）
+376 passed, 0 failed
+$ uv run --project backend ruff format --check backend / ruff check backend / mypy --config-file backend/pyproject.toml backend/src
+全部通过
+$ uv lock --project backend --check
+锁文件无漂移
+前端 tsc / eslint / prettier 全绿
 ```
 
-关键回归确认：
+**PR-2：**
 
-- tests/db/test_models_match_migrations.py（迁移 0007 ↔ ORM 比对）与 tests/db_compat 全绿——模型与迁移结构一致。
-- tests/e2e/test_health_and_contract.py::test_committed_spec_matches_current_code 在重新导出 OpenAPI 后通过——契约事实源已同步。
-- 前端 tsc --noEmit / eslint / prettier 全绿；errors.ts 的 Record<ApiErrorCode, string> 因新增 MODEL_ENDPOINT_NOT_ALLOWED 曾编译失败，已按其设计意图显式补齐兜底文案。
+```text
+$ uv run --project backend pytest backend/tests
+437 passed, 1 warning, 0 failed   （新增 61 条：crypto 7 / outbound 13 / service 24 / API 17）
+唯一 warning 为 starlette 对 anyio 别名的既有弃用提示
 
-环境注记：本机沙箱的 safe-delete 钩子会拦截 pytest 临时目录（>50 文件）的批量清理，导致部分已全部通过的测试进程退出码为 1（无任何 F 或失败摘要，auth/db/db_compat 等目录单独跑同样复现）；判定以进度点与失败摘要为准。
+$ uv run --project backend ruff format --check backend / ruff check backend / mypy --config-file backend/pyproject.toml backend/src
+全部通过（mypy 66 文件零错误）
+
+$ uv lock --project backend --check
+锁文件无漂移（新增 cryptography 47.0.0）
+
+$ npx pnpm@9.15.4 --dir frontend exec tsc --noEmit / run lint / run test
+全部通过（Vitest 3 文件 / 20 用例，含 #25 T10 新增用例）
+```
+
+回归确认：
+
+- tests/db/test_models_match_migrations.py 与 tests/db_compat 全绿（含备份恢复演练 F2）——模型、迁移与库结构一致。
+- tests/e2e/test_health_and_contract.py::test_committed_spec_matches_current_code 在重新导出后通过。
+- /test 探测经 monkeypatch 桩验证，不产生真实网络调用；真实 provider 验收（openai/anthropic 各路径）按 07 号要求在部署环境由用户执行。
+
+环境注记：本机沙箱的 safe-delete 钩子会对"批量删除临时文件"的合法测试（db 模块的迁移目录复制清理、db_compat 备份恢复演练）注入 SystemExit 并级联毒化后续夹具（"assert not self._finalizers"），在沙箱内跑全量套件必现、绕过沙箱即全绿——与 T06 交接卡记录同源，判定以绕过沙箱后的完整输出为准。
 
 ## 8. 未决问题
 

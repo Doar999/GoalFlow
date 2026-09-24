@@ -915,7 +915,7 @@ export interface paths {
         put?: never;
         /**
          * 测试个人模型配置
-         * @description 显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与脱敏错误分类（决策 A7/A8）；频控仅作滥用兜底，阈值放宽至每用户 1000 次/15 分钟，正常使用不可触达（决策 A14）。
+         * @description 显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与脱敏错误分类（决策 A7/A8）；频控仅作滥用兜底（每用户 1000 次/15 分钟，决策 A14）。
          */
         post: operations["test_model_config_api_model_configs__config_id__test_post"];
         delete?: never;
@@ -2045,7 +2045,7 @@ export interface components {
              * @description 自定义服务地址；null 表示官方默认端点
              */
             base_url: string | null;
-            /** @description 最近一次测试的能力记录；从未测试为 null */
+            /** @description 最近一次测试的能力记录；从未测试或最近一次失败为 null */
             capabilities: components["schemas"]["ModelCapabilities"] | null;
             /**
              * Created At
@@ -2054,7 +2054,7 @@ export interface components {
             created_at: string;
             /**
              * Enabled
-             * @description false 表示已删除（归档行保留以支撑作业历史）
+             * @description false 表示用户已禁用；删除（归档）配置不出现在任何响应里
              */
             enabled: boolean;
             /**
@@ -2135,7 +2135,7 @@ export interface components {
          * @description 连通性测试结果。失败也走 200 响应体，不抛 MODEL_UNAVAILABLE（T14 决策 A7）。
          */
         ModelTestResponse: {
-            /** @description 测试得出的能力记录；失败时可能为 null */
+            /** @description 测试得出的能力记录；基本生成失败时为 null */
             capabilities: components["schemas"]["ModelCapabilities"] | null;
             /** Config Id */
             config_id: string;
@@ -2777,7 +2777,7 @@ export interface components {
         TaskExecutor: "user" | "agent" | "collaborative";
         /**
          * TestModelConfigRequest
-         * @description 触发连通性测试。固定无私人内容短提示，频控与超时由服务端约束（决策 A7）。
+         * @description 触发连通性测试。固定无私人内容短提示，超时与重试由服务端约束（决策 A7）。
          */
         TestModelConfigRequest: Record<string, never>;
         /** UndoClosureRequest */
@@ -6145,6 +6145,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description 请求来源不受信任，或自定义地址被实例出站策略拒绝（MODEL_ENDPOINT_NOT_ALLOWED，校验先于模型调用执行） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description 配置不存在、不属于当前用户或已删除（归档配置一律按不存在处理，T14 决策 A4） */
             404: {
                 headers: {
@@ -6154,13 +6163,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 请求参数校验未通过 */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description 测试调用频率超限（RATE_LIMITED） */

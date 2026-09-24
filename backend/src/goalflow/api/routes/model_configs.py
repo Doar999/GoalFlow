@@ -1,4 +1,4 @@
-"""个人模型配置接口（T14 契约 PR）：创建/列举/修改/测试/默认/删除六端点。
+"""个人模型配置接口（T14 PR-2）：创建/列举/修改/测试/默认/删除六端点。
 
 端点清单的出处：07-model-provider-design.md"接口建议"节（原文标为建议，
 经 T14 交接卡决策 A9 确认为契约）。语义要点：
@@ -7,17 +7,15 @@
 - PATCH 走 expected_revision 乐观锁，provider 不可改（决策 A3）；
 - DELETE 是归档：enabled=0、凭证删除、行保留，归档配置对所有端点按 404 处理（决策 A4）；
 - /test 结果在 200 响应体返回，不抛 MODEL_UNAVAILABLE（决策 A7）。
-
-端点本期交付契约形状（桩），业务实现在 T14 PR-2 接入。
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Final, NoReturn
+from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field, model_validator
 
-from goalflow.api.dependencies import CurrentUserDep, require_idempotency_key
+from goalflow.api.dependencies import CurrentUserDep, DatabaseDep, require_idempotency_key
 from goalflow.contracts.enums import (
     CapabilityState,
     ModelApiMode,
@@ -27,6 +25,8 @@ from goalflow.contracts.enums import (
 )
 from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import ErrorResponse
+from goalflow.model_configs import service
+from goalflow.model_configs.service import ModelConfigView, ModelTestView
 
 router = APIRouter(tags=["model-configs"])
 
@@ -50,14 +50,6 @@ def _errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
 
 ConfigIdPath = Annotated[str, Path(max_length=36, description="模型配置 ID")]
 IdempotencyKeyDep = Annotated[str, Depends(require_idempotency_key)]
-
-
-def _implementation_stub() -> NoReturn:
-    """契约桩：业务实现随 T14 PR-2 接入（交接卡第 6 节）。"""
-    raise GoalflowError(
-        ErrorCode.INTERNAL_ERROR,
-        "该端点随 T14 业务实现（PR-2）接入交付",
-    )
 
 
 def _validate_provider_api_mode(provider: ModelProvider, api_mode: ModelApiMode | None) -> None:
@@ -148,7 +140,7 @@ class SetDefaultModelConfigRequest(BaseModel):
 
 
 class TestModelConfigRequest(BaseModel):
-    """触发连通性测试。固定无私人内容短提示，频控与超时由服务端约束（决策 A7）。"""
+    """触发连通性测试。固定无私人内容短提示，超时与重试由服务端约束（决策 A7）。"""
 
     pass
 
@@ -183,10 +175,10 @@ class ModelConfigResponse(BaseModel):
     base_url: str | None = Field(description="自定义服务地址；null 表示官方默认端点")
     model_id: str = Field(description="供应商模型名")
     revision: int = Field(description="配置版本；api_mode 等修改会递增")
-    enabled: bool = Field(description="false 表示已删除（归档行保留以支撑作业历史）")
+    enabled: bool = Field(description="false 表示用户已禁用；删除（归档）配置不出现在任何响应里")
     is_default: bool = Field(description="是否为当前用户默认配置；每用户至多一个")
     has_credential: bool = Field(description="是否持有凭证；凭证材料本身绝不出现在响应中")
-    capabilities: ModelCapabilities | None = Field(description="最近一次测试的能力记录；从未测试为 null")
+    capabilities: ModelCapabilities | None = Field(description="最近一次测试的能力记录；从未测试或最近一次失败为 null")
     last_test_at: datetime | None = Field(description="最近一次测试时间；从未测试为 null")
     created_at: datetime
     updated_at: datetime
@@ -205,9 +197,54 @@ class ModelTestResponse(BaseModel):
     config_id: str
     config_revision: int = Field(description="测试所依据的配置版本；与当前 revision 不一致说明测试期间配置被修改")
     outcome: ModelTestOutcome
-    capabilities: ModelCapabilities | None = Field(description="测试得出的能力记录；失败时可能为 null")
+    capabilities: ModelCapabilities | None = Field(description="测试得出的能力记录；基本生成失败时为 null")
     error: ModelTestError | None = Field(description="失败时的分类与脱敏说明；成功为 null")
     tested_at: datetime
+
+
+# —— 视图 → 响应模型 ——
+
+
+def _capabilities_response(raw: dict[str, str] | None) -> ModelCapabilities | None:
+    if raw is None:
+        return None
+    return ModelCapabilities(
+        basic_generation=CapabilityState(raw["basic_generation"]),
+        structured_output=CapabilityState(raw["structured_output"]),
+        streaming=CapabilityState(raw["streaming"]),
+    )
+
+
+def _config_response(view: ModelConfigView) -> ModelConfigResponse:
+    return ModelConfigResponse(
+        id=view.id,
+        name=view.name,
+        model_provider=ModelProvider(view.model_provider),
+        api_mode=ModelApiMode(view.api_mode) if view.api_mode is not None else None,
+        base_url=view.base_url,
+        model_id=view.model_id,
+        revision=view.revision,
+        enabled=view.enabled,
+        is_default=view.is_default,
+        has_credential=view.has_credential,
+        capabilities=_capabilities_response(view.capabilities),
+        last_test_at=view.last_test_at,
+        created_at=view.created_at,
+        updated_at=view.updated_at,
+    )
+
+
+def _test_response(view: ModelTestView) -> ModelTestResponse:
+    return ModelTestResponse(
+        config_id=view.config_id,
+        config_revision=view.config_revision,
+        outcome=ModelTestOutcome(view.outcome),
+        capabilities=_capabilities_response(view.capabilities),
+        error=ModelTestError(kind=ModelTestErrorKind(view.error_kind), message=view.error_message)
+        if view.error_kind is not None
+        else None,
+        tested_at=view.tested_at,
+    )
 
 
 # —— 端点 ——
@@ -225,10 +262,22 @@ class ModelTestResponse(BaseModel):
 )
 def create_model_config(
     user: CurrentUserDep,
+    db: DatabaseDep,
     request: CreateModelConfigRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ModelConfigResponse:
-    _implementation_stub()
+    view = service.create_model_config(
+        db,
+        user,
+        name=request.name,
+        model_provider=request.model_provider,
+        api_mode=request.api_mode,
+        base_url=request.base_url,
+        model_id=request.model_id,
+        api_key=request.api_key,
+        idempotency_key=idempotency_key,
+    )
+    return _config_response(view)
 
 
 @router.get(
@@ -240,8 +289,8 @@ def create_model_config(
     ),
     responses=_errors(401, 500),
 )
-def list_model_configs(user: CurrentUserDep) -> list[ModelConfigResponse]:
-    _implementation_stub()
+def list_model_configs(user: CurrentUserDep, db: DatabaseDep) -> list[ModelConfigResponse]:
+    return [_config_response(view) for view in service.list_model_configs(db, user)]
 
 
 @router.patch(
@@ -256,10 +305,14 @@ def list_model_configs(user: CurrentUserDep) -> list[ModelConfigResponse]:
 )
 def update_model_config(
     user: CurrentUserDep,
+    db: DatabaseDep,
     config_id: ConfigIdPath,
     request: UpdateModelConfigRequest,
 ) -> ModelConfigResponse:
-    _implementation_stub()
+    # 只把显式提交的字段交给业务层：缺省与显式 null 语义不同（base_url 清除、api_key 保持等）。
+    fields = request.model_dump(exclude_unset=True, exclude={"expected_revision"}, mode="json")
+    view = service.update_model_config(db, user, config_id, expected_revision=request.expected_revision, fields=fields)
+    return _config_response(view)
 
 
 @router.post(
@@ -268,34 +321,36 @@ def update_model_config(
     description=(
         "显式用户触发，用固定无私人内容短提示、限制输出/重试/超时发起最小真实调用"
         "（直接构造 chat model，不经过 LangGraph 图）。结果在 200 响应体返回：能力三态与"
-        "脱敏错误分类（决策 A7/A8）；频控仅作滥用兜底，阈值放宽至每用户 1000 次/15 分钟，"
-        "正常使用不可触达（决策 A14）。"
+        "脱敏错误分类（决策 A7/A8）；频控仅作滥用兜底（每用户 1000 次/15 分钟，决策 A14）。"
     ),
-    responses=_errors(401, 404, 422, 429, 500),
+    responses=_errors(401, 403, 404, 429, 500),
 )
 def test_model_config(
     user: CurrentUserDep,
+    db: DatabaseDep,
     config_id: ConfigIdPath,
     request: TestModelConfigRequest,
 ) -> ModelTestResponse:
-    _implementation_stub()
+    return _test_response(service.test_model_config(db, user, config_id))
 
 
 @router.put(
     "/api/model-configs/default",
     summary="设置默认模型配置",
     description=(
-        "指定当前用户有效配置为默认；旧默认在同一写事务内让位，每用户至多一个默认（DB 部分唯一索引兜底，决策 A2）。"
-        "已禁用或已删除的配置不能设为默认（409）。"
+        "指定当前用户有效配置为默认；旧默认在同一写事务内让位，每用户至多一个默认"
+        "（DB 部分唯一索引兜底，决策 A2）。已禁用或已删除的配置不能设为默认（409）。"
     ),
     responses=_errors(401, 403, 404, 409, 422, 500),
 )
 def set_default_model_config(
     user: CurrentUserDep,
+    db: DatabaseDep,
     request: SetDefaultModelConfigRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ModelConfigResponse:
-    _implementation_stub()
+    view = service.set_default_model_config(db, user, request.config_id, idempotency_key=idempotency_key)
+    return _config_response(view)
 
 
 @router.delete(
@@ -303,16 +358,18 @@ def set_default_model_config(
     summary="删除个人模型配置",
     description=(
         "归档式删除（与 PATCH 的禁用不同，删除不可恢复）：deleted_at 置时间戳、enabled=0、"
-        "凭证与密钥版本清空、默认标记清除，行保留以支撑作业所需的非敏感历史信息（07 号接口建议；决策 A4）。"
-        "归档配置后续一律按 404 处理，已发出的模型请求无法通过删除收回，但后续重试会检查删除状态。"
-        "删除默认配置时前端提示重新选择。"
+        "凭证与密钥版本清空、默认标记清除，行保留以支撑作业所需的非敏感历史信息"
+        "（07 号接口建议；决策 A4）。归档配置后续一律按 404 处理，已发出的模型请求无法通过"
+        "删除收回，但后续重试会检查删除状态。删除默认配置时前端提示重新选择。"
     ),
     responses=_errors(401, 403, 404, 409, 500),
 )
 def delete_model_config(
     user: CurrentUserDep,
+    db: DatabaseDep,
     config_id: ConfigIdPath,
     request: DeleteModelConfigRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ModelConfigResponse:
-    _implementation_stub()
+    view = service.delete_model_config(db, user, config_id, idempotency_key=idempotency_key)
+    return _config_response(view)
