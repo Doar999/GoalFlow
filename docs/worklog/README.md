@@ -31,7 +31,7 @@ AI 会话的记忆会随会话结束消失，人的记忆会衰减，只有仓�
 | T02 | [T02-engineering-foundation.md](T02-engineering-foundation.md) | 待填 | 已完成 |
 | T03 | [T03-auth-session.md](T03-auth-session.md) | 待填 | 已完成（PR #10 已合并） |
 | T04 | [T04-goal-plan-versions.md](T04-goal-plan-versions.md) | 待填 | 已完成（#16 契约面、#18 业务实现均已合并） |
-| T05 | [T05-scheduling.md](T05-scheduling.md) | 待填 | 进行中（契约面完成待提交；业务实现未开始；分支 feat/T05-scheduling） |
+| T05 | [T05-scheduling.md](T05-scheduling.md) | 待填 | PR-2 业务实现完成待评审（契约 PR #19 已合并） |
 | T07 | [T07-job-execution.md](T07-job-execution.md) | 待填 | 已完成（#11、#12、#13 已合并；202 验收挪到 T08） |
 | T16 | [T16-data-layer-foundation.md](T16-data-layer-foundation.md) | 待填 | 已完成（连接装配与 Alembic 脚手架已合并） |
 

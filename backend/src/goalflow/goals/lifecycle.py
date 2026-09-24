@@ -5,8 +5,8 @@
 
 与相邻工作包的两个接缝（交接卡决策 A11、A12），T05/T06 落地后替换：
 
-- 预算检查：`check_shared_weekly_budget` 未接入前返回 `None`，resume 照常完成状态转换
-  ——resume 检查是提示层，排期计算的冲突原因码是权威层。
+- 预算检查：`resolve_shared_budget` 已接入 T05 的排期模块——resume 检查仍是提示层，
+  排期计算的冲突原因码是权威层（A11）。
 - 暂停影响：`compute_pause_impact` 未接入前返回空列表并标记 `not_wired`，
   "空列表"仅因"未检查"，不代表"无影响"。
 
@@ -82,9 +82,21 @@ def compute_pause_impact(goal_id: str, owner_id: str) -> list[AffectedDependency
     return []
 
 
-def resolve_shared_budget(user_id: str) -> SharedBudget | None:
-    """共享周预算的接缝（A11）：T05 的 `check_shared_weekly_budget` 交付前返回 None。"""
-    return None
+def resolve_shared_budget(database: Database, user_id: str) -> SharedBudget | None:
+    """共享周预算的接缝（A11）：计算委托给 T05 的排期模块，本函数只做形状转换。
+
+    延迟导入避免 goals ↔ scheduling 的模块级依赖（scheduling 引用 goals 的表）。
+    用户没有活动目标时返回 None，resume 照常完成状态转换。
+    """
+    from goalflow.scheduling.service import resolve_shared_budget as _resolve
+
+    snapshot = _resolve(database, user_id)
+    if snapshot is None:
+        return None
+    return SharedBudget(
+        weekly_capacity_minutes=snapshot["weekly_capacity_minutes"],
+        total_demand_minutes=snapshot["total_demand_minutes"],
+    )
 
 
 def _require_revision(goal: Goal, expected_revision: int) -> None:
@@ -278,12 +290,12 @@ def resume_goal(
 ) -> TransitionView:
     """paused → active。共享预算被占满时返回 BUDGET_CONFLICT 供取舍（D12 第 5 节）。
 
-    预算接缝未接入（resolve_shared_budget 返回 None）时照常完成状态转换——
-    resume 检查是提示层，不阻塞恢复；排期计算的冲突原因码是权威层（A11）。
+    预算快照在事务外取得（T16：写事务里不做业务计算；快照随后在事务内作参考）。
+    接缝已接入 T05：共享周预算被活动目标占满时返回 BUDGET_CONFLICT 供取舍（A11）。
     """
     request = _idempotent_request(user, "goals.resume", idempotency_key)
     # 预算快照在事务外取得（T16：写事务里不做业务计算；快照随后在事务内作参考）。
-    budget = resolve_shared_budget(user.user_id)
+    budget = resolve_shared_budget(db, user.user_id)
     with db.write() as session:
         outcome = run_idempotent(
             session,

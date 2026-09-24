@@ -89,10 +89,11 @@ class TestResume:
 
     def test_resume_when_budget_is_over_is_rejected(self, database, user, monkeypatch) -> None:
         goal = self._paused(database, user, "rs-over")
+        # T05 接入后 resolve_shared_budget 的真实现签名为 (db, user_id)；测试保持注入假快照。
         monkeypatch.setattr(
             lifecycle,
             "resolve_shared_budget",
-            lambda uid: SharedBudget(weekly_capacity_minutes=60, total_demand_minutes=120),
+            lambda db, uid: SharedBudget(weekly_capacity_minutes=60, total_demand_minutes=120),
         )
         with pytest.raises(GoalflowError) as excinfo:
             lifecycle.resume_goal(database, user, goal.id, expected_revision=3, idempotency_key="resume-2")

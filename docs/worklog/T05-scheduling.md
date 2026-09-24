@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T05（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | （待填） |
-| 状态 | 进行中（契约面完成待提交；业务实现未开始） |
+| 状态 | PR-2 业务实现完成，待提交评审 |
 | 更新日期 | 2026-09-24 |
-| 相关 PR | #（待填）；分支 `feat/T05-scheduling` |
+| 相关 PR | #19（契约面，已合并）；PR-2（业务实现）见评审 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容，不要追加"第二次会话……"这类流水账。历史在 Git 里。
 
@@ -117,34 +117,47 @@ frontend/
 
 ## 6. 进展
 
-- 已完成：开工检查；分支 `feat/T05-scheduling`；交接卡（决策 A1—A10）。
-- 已完成（契约面，待提交）：contracts 排期枚举（`SchedulingReasonCode`、`TaskDayConstraintKind/Status`、`DailyOverrideKind`、`AgendaRevisionStatus`、`GoalFocusStatus`、`CapacityBasis`）；迁移 0005 排期族 8 张表 + `scheduling/models.py` ORM；`api/routes/scheduling.py` 6 端点契约形状（业务桩，随 PR-2 接通）；OpenAPI 与前端类型已重新导出，契约漂移检查一致。
-- 未开始：`scheduling/` 业务实现（calculate_agenda 纯函数、应用服务、resume 接缝替换）与测试（PR-2）。
+- 已完成：开工检查；分支；交接卡（决策 A1—A10）。
+- 已完成（契约面，PR #19 已合并）：contracts 排期枚举；迁移 0005 排期族 8 张表 + `scheduling/models.py` ORM；`api/routes/scheduling.py` 6 端点契约形状；OpenAPI 与前端类型重导出。
+- 已完成（业务实现，PR-2 待提交）：
+  - `scheduling/engine.py`：`calculate_agenda` 纯函数——容量两口径、候选过滤、必须项集合与分层排序（紧迫/周缺口/饥饿/focus/rank/适配性）、装箱拆分、6 类冲突输出与 deadline_extension 变更建议；排序键全序 tiebreaker 保证确定性。
+  - `scheduling/service.py`：快照组装（只读事务）、`persist_agenda` 短写事务落库与 current_revision 切换、preferences/availability/override/constrain 四个命令（各带 revision 重查）、`get_agenda`、`ensure_agenda`（作业提交 + outbox 投递）、`resolve_shared_budget`（A11 接缝真实现）。
+  - `scheduling/jobs.py`：`agenda_generation` 作业处理函数（事务外计算、commit 内重查 revision），已登记 `celery_app.HANDLER_MODULES`。
+  - 路由接线：6 端点全部由桩改为调用模块 Interface；`api/dependencies.py` 新增 `JobPublisherDep`（测试可覆盖为 no-op）。
+  - lifecycle 接缝替换：`resolve_shared_budget(db, user_id)` 签名扩展并委托排期模块（A11 兑现）。
+  - 测试：`tests/scheduling/` 39 条（引擎 19、服务 15、API 5），合计 348 passed。
+- 开放项：pause 依赖回填（T06）、生成类端点接线（T08/T09）。
 
 ## 7. 验证结果
 
-2026-09-24 在 Windows、Python 3.11、SQLite 上执行。数据库用例由迁移建出真实库文件（WAL、`foreign_keys=ON`、`busy_timeout=5000`），不使用内存库。
+2026-09-24 在 Windows、Python 3.11、SQLite 上执行。数据库用例全部由迁移建出真实库文件，经 `create_database_engine()` 连接（WAL、`foreign_keys=ON`、`busy_timeout=5000`），不使用内存库。
 
 ```text
-$ bash scripts/check.sh（后端与契约部分）
-uv lock --check 通过；ruff format/check 通过；mypy 52 文件零错误；契约漂移：契约一致；凭证粗筛：未发现
-（前端四项因环境 corepack/pnpm 版本冲突在脚本内失败，已用 npx pnpm@9.15.4 等价执行，全部通过）
+$ uv run --project backend pytest backend/tests
+348 passed, 1 warning（#19 合并后 309 + 本 PR 新增 39）
+唯一 warning 为 starlette 对 anyio 别名的既有弃用提示
 
-$ uv run --project backend pytest backend/tests -q
-309 passed, 1 warning（唯一 warning 为 starlette 对 anyio 别名的既有弃用提示）
+$ ruff format --check backend / ruff check backend
+通过
+
+$ uv run --project backend mypy --config-file backend/pyproject.toml backend/src
+Success: no issues found in 55 source files
 
 $ npx -y pnpm@9.15.4 --dir frontend run lint / exec tsc --noEmit / exec prettier --check src
-全部通过
+全部通过（check.sh 前端段因环境 corepack 冲突失败，以上为等价命令真实输出）
 ```
 
 ## 8. 未决问题
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| 工作区存在未提交改动 `.github/workflows/ci.yml`（三个 job 加 `timeout-minutes: 10`） | 与 T05 无关，不纳入本分支任何提交 | 提交该改动的会话 / 用户 |
-| T06 未建 `task_dependencies` 表 | 依赖结果字段按 A2 占位，T06 合并后回填 | T06 负责人 |
+| T06 未建 `task_dependencies` 表 | 依赖结果字段按 A2 占位（恒 satisfied），T06 合并后回填并打开"依赖未满足进 deferred"的集成测试 | T06 负责人 |
+| 今日已投入（spent_minutes）恒为 0 | 执行记录归 T11；总额口径下会高估当日剩余容量，T11 接入后修正 | T11 负责人 |
+| 周需求 v1 口径（见 service.py docstring） | pending 任务 expected 之和（限最晚日期 ≤ 本周日）+ in_progress 剩余；T11 落地实际投入后可改按"计划包络"口径 | T11 负责人 |
 
-T04 已全部完成（#16、#18 已合并）：goals/ 禁触解除，A3 接缝替换 `check_shared_weekly_budget` 已解锁。
+已解决：工作区 ci.yml 未提交改动被另一会话撤销（未决问题自然消除）。
+
+T04 已全部完成（#16、#18 已合并）：goals/ 禁触解除，A3 接缝替换 `check_shared_weekly_budget` 已在本 PR 兑现（`resolve_shared_budget(db, user_id)` 签名扩展并委托排期模块）。
 
 ## 9. 给接手者
 
@@ -153,4 +166,6 @@ T04 已全部完成（#16、#18 已合并）：goals/ 禁触解除，A3 接缝�
 3. **枚举进 `contracts/`**，不在 scheduling 模块自造字符串常量；改 contracts/OpenAPI/迁移是契约变更，单独 PR。
 4. **`blocked` 是计算态**，不要给 tasks 加列；暂停目标的任务是否进入候选集由候选过滤（13 号第 3 节）处理。
 5. **总额/剩余额度是 `daily_overrides.override_kind` 的两种口径**，不是可互换参数；混用是最容易写错的地方（03 号第 4 节）。
-6. ** Snapshot 一律不可变输入**：先在事务外组装快照（含 planning_revision），再进短事务重查 revision——过期就放弃重算，不要在事务内做计算。
+6. **Snapshot 一律不可变输入**：先在事务外组装快照（含 planning_revision），再进短事务重查 revision——过期就放弃重算，不要在事务内做计算。
+7. **测试文件命名带模块前缀**（`test_scheduling_*.py`）：tests 目录无 `__init__.py`，`test_service.py`/`test_api.py` 这类通用名会与 auth/db 的同名文件 pytest 收集冲突（T04 也踩过同一坑）。
+8. **generation 是异步作业**（A10）：处理函数经模块级 `get_database()` 取库（Worker 单例）；service 层逻辑直接测 `run_agenda_generation`（接受显式 Database），不要经 Celery 测。

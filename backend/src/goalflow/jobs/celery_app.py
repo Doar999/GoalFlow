@@ -27,7 +27,7 @@ from goalflow.jobs.worker import run_job
 
 # 注册了作业处理函数的模块。Worker 启动时 import 它们，处理函数才会进入注册表。
 # T08 起新增作业种类时在这里登记，例如 "goalflow.agent.jobs"。
-HANDLER_MODULES: Final[tuple[str, ...]] = ()
+HANDLER_MODULES: Final[tuple[str, ...]] = ("goalflow.scheduling.jobs",)
 
 RUN_JOB_TASK: Final = "goalflow.jobs.run_job"
 DISPATCH_OUTBOX_TASK: Final = "goalflow.jobs.dispatch_outbox"
