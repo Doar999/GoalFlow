@@ -20,3 +20,24 @@ DEFAULT_REVIEW_PERIOD: Final[ReviewPeriod] = ReviewPeriod.WEEKLY
 
 #: 上述取值的策略版本标识，写进审计事件。取值或语义变化时必须更换。
 CLOSURE_POLICY_VERSION: Final[str] = "closure-policy-v1"
+
+
+# —— 排期策略（T05 决策 A1；13-scheduling-engine.md 第 4 节）——
+
+#: 排期策略版本标识，写入 agenda_revisions.scheduling_policy_version（Q08 可解释）。
+SCHEDULING_POLICY_VERSION: Final[str] = "scheduling-policy-v1"
+
+#: latest_date 距今日不超过该天数的弹性任务进入第一紧迫区间。
+URGENT_WITHIN_DAYS: Final[int] = 2
+
+#: latest_date 距今日不超过该天数的弹性任务进入第二紧迫区间；更晚为第三区间。
+SOON_WITHIN_DAYS: Final[int] = 7
+
+#: 本周投入缺口达到该分钟数时，弹性任务进入最高缺口区间（13 号第 4 节排序键 2）。
+WEEKLY_GAP_HIGH_MINUTES: Final[int] = 60
+
+#: 连续未获安排天数达到该值时，同等弹性条件下获得更高顺序（防长期饥饿，13 号第 9 节）。
+STARVATION_AFTER_DAYS: Final[int] = 3
+
+#: 任务规格未给 minimum_session_minutes 时，可拆分任务的单次分配下限（分钟）。
+DEFAULT_MINIMUM_SESSION_MINUTES: Final[int] = 15

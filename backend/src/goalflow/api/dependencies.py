@@ -10,6 +10,7 @@ from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import IDEMPOTENCY_KEY_HEADER, normalize_idempotency_key
 from goalflow.core.config import get_settings
 from goalflow.db.session import Database, get_database
+from goalflow.jobs.service import Publisher
 
 _SAFE_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -74,3 +75,16 @@ def require_idempotency_key(
     在业务写事务里比对已记录的请求（T07 交接卡决策 E6）。
     """
     return normalize_idempotency_key(raw_key)
+
+
+def get_job_publisher() -> Publisher:
+    """作业消息投递方（API 进程用 Celery；T05 起 ensure_agenda 等业务端点使用）。
+
+    单独成依赖是为了让 API 测试能覆盖成 no-op，不在测试进程里连 Redis。
+    """
+    from goalflow.jobs.celery_app import celery_publisher
+
+    return celery_publisher()
+
+
+JobPublisherDep = Annotated[Publisher, Depends(get_job_publisher)]

@@ -1,4 +1,4 @@
-"""时间预算与排期接口（T05 契约 PR）：偏好、额度、单日约束与每日安排。
+"""时间预算与排期接口（T05 PR-2）：偏好、额度、单日约束与每日安排。
 
 端点清单的出处：
 
@@ -7,18 +7,24 @@
 - 05-module-contracts.md 第 2 节：read_today、ensure_agenda、update_goal_priorities、
   constrain_today_task、update_availability、override_today 的接口行。
 
-本文件目前全部为**契约桩**：形状与校验先落地供前端与联调对齐，
-业务实现随 T05 PR-2 交付（沿用 T04 契约 PR 的两段式做法）。
+全部端点调用 scheduling 模块的 Interface；generation 为异步作业（决策 A10），
+计算与落库在 `scheduling.jobs.generate_agenda`。
 """
 
 from datetime import date, datetime
-from typing import Annotated, Any, Final, NoReturn
+from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
-from goalflow.api.dependencies import CurrentUserDep, require_idempotency_key
-from goalflow.api.routes.jobs import JobResponse
+import goalflow.scheduling.jobs  # noqa: F401  注册 agenda_generation 处理函数（提交时校验 kind）
+from goalflow.api.dependencies import (
+    CurrentUserDep,
+    DatabaseDep,
+    JobPublisherDep,
+    require_idempotency_key,
+)
+from goalflow.api.routes.jobs import JobResponse, _job_response
 from goalflow.contracts.enums import (
     AgendaRevisionStatus,
     CapacityBasis,
@@ -27,8 +33,8 @@ from goalflow.contracts.enums import (
     SchedulingReasonCode,
     TaskDayConstraintKind,
 )
-from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import ErrorResponse, RevisionedRequest, RevisionedResource
+from goalflow.scheduling import service as scheduling_service
 
 router = APIRouter(prefix="/api", tags=["scheduling"])
 
@@ -36,9 +42,9 @@ _ERROR_DESCRIPTIONS: Final = {
     401: "未登录或会话失效",
     403: "请求来源不受信任",
     404: "日程、任务、目标或相关资源不存在，或不属于当前用户",
-    409: ("版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）"),
+    409: "版本已更新（REVISION_CONFLICT）或时间预算冲突（BUDGET_CONFLICT）",
     422: "请求参数校验未通过",
-    500: "接口尚未实现（随 T05 业务实现 PR 交付）",
+    500: "生成当日安排失败（INTERNAL_ERROR）",
 }
 
 
@@ -49,14 +55,6 @@ def _errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
 LocalDatePath = Annotated[date, Path(description="用户本地日期，格式 YYYY-MM-DD")]
 TaskIdPath = Annotated[str, Path(max_length=36, description="任务 ID")]
 IdempotencyKeyDep = Annotated[str, Depends(require_idempotency_key)]
-
-
-def _business_stub() -> NoReturn:
-    """契约桩：业务实现随 T05 PR-2 交付，沿用 T04 契约 PR 的两段式做法。"""
-    raise GoalflowError(
-        ErrorCode.INTERNAL_ERROR,
-        "该端点随 T05 业务实现交付",
-    )
 
 
 # —— 通用形状 ——
@@ -217,11 +215,22 @@ class UpdateSchedulingPreferencesRequest(RevisionedRequest):
     responses=_errors(401, 403, 404, 409, 422),
 )
 def update_scheduling_preferences(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    idempotency_key: IdempotencyKeyDep,
+    database: DatabaseDep,
     request: UpdateSchedulingPreferencesRequest,
 ) -> SchedulingPreferencesResponse:
-    _business_stub()
+    revision, preferences = scheduling_service.update_preferences(
+        database,
+        user,
+        [entry.model_dump() for entry in request.preferences],
+        expected_revision=request.expected_revision,
+        idempotency_key=idempotency_key,
+    )
+    return SchedulingPreferencesResponse(
+        planning_revision=revision,
+        preferences=[PreferenceInput(**entry) for entry in preferences],
+    )
 
 
 # —— 周额度与单日额度 ——
@@ -241,11 +250,20 @@ class UpdateAvailabilityRequest(RevisionedRequest):
     responses=_errors(401, 403, 409, 422),
 )
 def update_availability(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    idempotency_key: IdempotencyKeyDep,
+    database: DatabaseDep,
     request: UpdateAvailabilityRequest,
 ) -> AvailabilityVersionResponse:
-    _business_stub()
+    result = scheduling_service.update_availability(
+        database,
+        user,
+        effective_from=request.effective_from.isoformat(),
+        weekly_minutes=request.weekly_minutes,
+        expected_revision=request.expected_revision,
+        idempotency_key=idempotency_key,
+    )
+    return AvailabilityVersionResponse(revision=result["version_no"], **result)
 
 
 class OverrideDayRequest(RevisionedRequest):
@@ -262,12 +280,22 @@ class OverrideDayRequest(RevisionedRequest):
     responses=_errors(401, 403, 404, 409, 422),
 )
 def override_today(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    idempotency_key: IdempotencyKeyDep,
+    database: DatabaseDep,
     local_date: LocalDatePath,
     request: OverrideDayRequest,
 ) -> DailyOverrideResponse:
-    _business_stub()
+    result = scheduling_service.override_day(
+        database,
+        user,
+        local_date=local_date.isoformat(),
+        override_kind=request.override_kind,
+        minutes=request.minutes,
+        expected_revision=request.expected_revision,
+        idempotency_key=idempotency_key,
+    )
+    return DailyOverrideResponse(**result)
 
 
 # —— 每日安排 ——
@@ -279,8 +307,14 @@ def override_today(
     description="返回当前安排或缺失状态；读取不直接创建作业（05-module-contracts read_today）。",
     responses=_errors(401, 404),
 )
-def read_agenda(_user: CurrentUserDep, local_date: LocalDatePath) -> AgendaResponse:
-    _business_stub()
+def read_agenda(user: CurrentUserDep, database: DatabaseDep, local_date: LocalDatePath) -> AgendaResponse:
+    payload = scheduling_service.get_agenda(database, user, local_date.isoformat())
+    current = payload["revision"]
+    return AgendaResponse(
+        local_date=payload["local_date"],
+        planning_revision=payload["planning_revision"],
+        current=AgendaRevisionView(**current) if current else None,
+    )
 
 
 class ConstrainTaskRequest(RevisionedRequest):
@@ -301,13 +335,23 @@ class ConstrainTaskRequest(RevisionedRequest):
     responses=_errors(401, 403, 404, 409, 422),
 )
 def constrain_today_task(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    idempotency_key: IdempotencyKeyDep,
+    database: DatabaseDep,
     local_date: LocalDatePath,
     task_id: TaskIdPath,
     request: ConstrainTaskRequest,
 ) -> TaskConstraintResponse:
-    _business_stub()
+    result = scheduling_service.constrain_task(
+        database,
+        user,
+        local_date=local_date.isoformat(),
+        task_id=task_id,
+        constraint_kind=request.constraint_kind,
+        expected_revision=request.expected_revision,
+        idempotency_key=idempotency_key,
+    )
+    return TaskConstraintResponse(**result)
 
 
 @router.post(
@@ -319,9 +363,19 @@ def constrain_today_task(
     responses=_errors(401, 403, 404, 409, 422),
 )
 def ensure_agenda(
-    _user: CurrentUserDep,
-    _idempotency_key: IdempotencyKeyDep,
+    user: CurrentUserDep,
+    idempotency_key: IdempotencyKeyDep,
+    database: DatabaseDep,
+    publisher: JobPublisherDep,
     local_date: LocalDatePath,
     request: EnsureAgendaRequest,
 ) -> JobResponse:
-    _business_stub()
+    view = scheduling_service.ensure_agenda(
+        database,
+        user,
+        local_date=local_date.isoformat(),
+        planning_revision_hint=request.planning_revision,
+        idempotency_key=idempotency_key,
+        publisher=publisher,
+    )
+    return _job_response(view)
