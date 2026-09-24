@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     session_secret: SecretStr | None = None
     credential_encryption_key: SecretStr | None = None
     allow_registration: bool = True
+    # 自定义模型服务地址的本地/内网允许列表（T14 决策 A13）：逗号分隔的主机名、IP 或 CIDR 段。
+    # 留空 = 本地/内网端点全部拒绝（多用户托管的安全默认）；自部署跑本地模型时由部署者显式开放。
+    # 普通用户不能修改该策略（07 号"自定义地址"节）。与 T15 的出站开关同属实例级环境变量先例。
+    model_endpoint_allowlist: str = ""
     # 浏览器访问本应用的源，形如 https://goalflow.example.com，不带路径与末尾斜杠。
     # 写请求的 Origin 必须与它逐字相等（CSRF 防护，T03 决策 C7）。
     # 非生产环境留空表示不做 Origin 校验；生产环境必填且必须是 https。

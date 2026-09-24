@@ -37,6 +37,7 @@ const FALLBACK_MESSAGE_BY_CODE: Record<ApiErrorCode, string> = {
   INPUT_STALE: "依据的内容已过期，请重新获取后重试",
   MODEL_UNAVAILABLE: "模型服务暂时不可用，请稍后重试",
   GOAL_STATE_CONFLICT: "目标当前状态下不能进行这个操作",
+  MODEL_ENDPOINT_NOT_ALLOWED: "这个模型服务地址不被当前部署环境允许，请更换后重试",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -311,3 +311,61 @@ class ChangeClass(StrEnum):
 
     CONFIRMATION_REQUIRED = "confirmation_required"
     PROFILE_REVISION_REQUIRED = "profile_revision_required"
+
+
+# —— 个人模型配置（T14 契约 PR；取值出处见各 docstring）——
+
+
+class ModelProvider(StrEnum):
+    """模型供应商（PRD D08 已确认双 provider）。
+
+    取值直接作为 init_chat_model 的 model_provider 传入（07 号文档第 1 节）。
+    禁止根据模型名称猜测 provider；配置上写哪个就是哪个。
+    """
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
+class ModelApiMode(StrEnum):
+    """OpenAI 系供应商的 API 形态（07 号文档第 2 节）。
+
+    仅 model_provider=openai 时有效，映射 langchain-openai 的 use_responses_api；
+    anthropic 下必须为空，DB CHECK 强制该组合（T14 决策 A3）。
+    """
+
+    RESPONSES = "responses"
+    CHAT_COMPLETIONS = "chat_completions"
+
+
+class CapabilityState(StrEnum):
+    """模型能力的三态记录（07 号文档第 1 节）。
+
+    LangChain 在部分 provider 上用提示工程模拟结构化输出，这种情况记为
+    unsupported 而不是 supported——不伪报原生能力。
+    """
+
+    SUPPORTED = "supported"
+    UNSUPPORTED = "unsupported"
+    UNKNOWN = "unknown"
+
+
+class ModelTestOutcome(StrEnum):
+    """连通性测试的总体结果（T14 决策 A7：结果在 200 响应体返回，不抛 MODEL_UNAVAILABLE）。"""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ModelTestErrorKind(StrEnum):
+    """连通性测试失败的错误分类（07 号文档第 1 节）。
+
+    供应商原始错误信息脱敏后才进入响应，这里只保留定位所需的分类：
+    鉴权/权限、路径/模型、限流、网络与响应协议五类。
+    """
+
+    AUTH = "auth"
+    MODEL_NOT_FOUND = "model_not_found"
+    RATE_LIMITED = "rate_limited"
+    NETWORK = "network"
+    PROTOCOL = "protocol"
