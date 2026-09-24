@@ -1,4 +1,4 @@
-"""目标关联与变更提案接口（T06 契约 PR）：提出/确认关联、解除提案与提案终态。
+"""目标关联与变更提案接口（T06 PR-2）：提出/确认关联、解除提案与提案终态。
 
 端点清单的出处：
 
@@ -8,19 +8,26 @@
 - GET /api/change-proposals/{id} 为本包补充的最小读取端点（交接卡决策 A7）：
   用户确认或拒绝前必须能读到影响分析。
 
-端点本期交付契约形状（桩），业务实现在 T06 PR-2 接入（交接卡决策 A7）。
+PR-2 契约修正（随本 PR 评审确认）：ConfirmGoalLinkRequest 携带任务依赖边——
+03 第 57 行规定"跨目标依赖仅在已确认关联下建立"，依赖边只能在确认事务内落库，
+propose 阶段的空壳关联无法承载它们（契约 PR #22 的空体设计在实现时被推翻）。
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Final, NoReturn
+from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
-from goalflow.api.dependencies import CurrentUserDep, require_idempotency_key
+from goalflow.api.dependencies import CurrentUserDep, DatabaseDep, require_idempotency_key
 from goalflow.contracts.enums import ChangeClass, ChangeProposalStatus, DependencyOutcome, GoalLinkStatus
-from goalflow.contracts.errors import ErrorCode, GoalflowError
 from goalflow.contracts.http import ErrorResponse
+from goalflow.links import service
+from goalflow.links.service import (
+    ChangeProposalView,
+    DependencyEdgeCommand,
+    GoalLinkView,
+)
 
 router = APIRouter(tags=["goal-links"])
 
@@ -31,10 +38,10 @@ _ERROR_DESCRIPTIONS: Final = {
     409: (
         "加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求"
         "（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）"
-        "或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突）"
+        "或提案状态不允许该操作（GOAL_STATE_CONFLICT）"
     ),
     422: "请求参数校验未通过",
-    500: "接口尚未实现（业务实现随 T06 PR-2 接入交付）",
+    500: "服务内部错误",
 }
 
 
@@ -45,14 +52,6 @@ def _errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
 GoalIdPath = Annotated[str, Path(max_length=36, description="目标 ID")]
 LinkOrProposalIdPath = Annotated[str, Path(max_length=36, description="关联或提案 ID")]
 IdempotencyKeyDep = Annotated[str, Depends(require_idempotency_key)]
-
-
-def _implementation_stub() -> NoReturn:
-    """契约桩：业务实现随 T06 PR-2 接入（交接卡决策 A7）。"""
-    raise GoalflowError(
-        ErrorCode.INTERNAL_ERROR,
-        "该端点随 T06 业务实现（PR-2）接入交付",
-    )
 
 
 # —— 请求体 ——
@@ -77,9 +76,13 @@ class ProposeGoalLinkRequest(BaseModel):
 
 
 class ConfirmGoalLinkRequest(BaseModel):
-    """确认建立关联。确认时在同一事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节）。"""
+    """确认建立关联。确认事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节），
+    并在此事务内创建依赖边（03 第 57 行：跨目标依赖仅在已确认关联下建立）。"""
 
-    pass
+    dependencies: list[TaskDependencyEdge] = Field(
+        min_length=1,
+        description="与提案一致的任务依赖边；确认前依赖边不落库（PR-2 契约修正，见模块 docstring）",
+    )
 
 
 class ProposeUnlinkRequest(BaseModel):
@@ -137,6 +140,47 @@ class ChangeProposalResponse(BaseModel):
     applied_at: datetime | None
 
 
+# —— 视图 → 响应模型 ——
+
+
+def _link_response(view: GoalLinkView) -> GoalLinkResponse:
+    return GoalLinkResponse(
+        id=view.id,
+        goal_a_id=view.goal_a_id,
+        goal_b_id=view.goal_b_id,
+        status=GoalLinkStatus(view.status),
+        confirmed_at=view.confirmed_at,
+        created_at=view.created_at,
+        updated_at=view.updated_at,
+    )
+
+
+def _proposal_response(view: ChangeProposalView) -> ChangeProposalResponse:
+    return ChangeProposalResponse(
+        id=view.id,
+        goal_id=view.goal_id,
+        change_class=ChangeClass(view.change_class),
+        status=ChangeProposalStatus(view.status),
+        input_revision=view.input_revision,
+        impact=UnlinkImpact(**view.impact.__dict__),
+        reason=view.reason,
+        created_at=view.created_at,
+        accepted_at=view.accepted_at,
+        applied_at=view.applied_at,
+    )
+
+
+def _edge_commands(edges: list[TaskDependencyEdge]) -> list[DependencyEdgeCommand]:
+    return [
+        DependencyEdgeCommand(
+            predecessor_task_id=edge.predecessor_task_id,
+            successor_task_id=edge.successor_task_id,
+            required_outcome=edge.required_outcome.value,
+        )
+        for edge in edges
+    ]
+
+
 # —— 端点 ——
 
 
@@ -144,36 +188,54 @@ class ChangeProposalResponse(BaseModel):
     "/api/goals/{goal_id}/link-proposals",
     summary="提出目标关联",
     description=(
-        "创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；目标对规范化存储。"
+        "创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；"
+        "目标对规范化存储。依赖边在确认事务内才建立（03 第 57 行）。"
     ),
     status_code=201,
     responses=_errors(401, 403, 404, 409, 422, 500),
 )
 def propose_goal_link(
     user: CurrentUserDep,
+    db: DatabaseDep,
     goal_id: GoalIdPath,
     request: ProposeGoalLinkRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> GoalLinkResponse:
-    _implementation_stub()
+    view = service.propose_goal_link(
+        db,
+        user,
+        goal_id,
+        target_goal_id=request.target_goal_id,
+        dependencies=_edge_commands(request.dependencies),
+        idempotency_key=idempotency_key,
+    )
+    return _link_response(view)
 
 
 @router.post(
     "/api/goal-links/{link_id}/confirm",
     summary="确认建立关联",
     description=(
-        "proposed → active，并在同一事务内建立依赖边。确认时校验同用户、不自关联、"
-        "目标对未重复与全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。"
+        "proposed → active，并在同一事务内创建依赖边、校验全图无环（含其他目标的当前版本）；"
+        "成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。依赖边只在此事务内落库（03 第 57 行）。"
     ),
     responses=_errors(401, 403, 404, 409, 422, 500),
 )
 def confirm_goal_link(
     user: CurrentUserDep,
+    db: DatabaseDep,
     link_id: LinkOrProposalIdPath,
     request: ConfirmGoalLinkRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> GoalLinkResponse:
-    _implementation_stub()
+    view = service.confirm_goal_link(
+        db,
+        user,
+        link_id,
+        dependencies=_edge_commands(request.dependencies),
+        idempotency_key=idempotency_key,
+    )
+    return _link_response(view)
 
 
 @router.post(
@@ -188,11 +250,13 @@ def confirm_goal_link(
 )
 def propose_unlink(
     user: CurrentUserDep,
+    db: DatabaseDep,
     link_id: LinkOrProposalIdPath,
     request: ProposeUnlinkRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ChangeProposalResponse:
-    _implementation_stub()
+    view = service.propose_unlink(db, user, link_id, idempotency_key=idempotency_key)
+    return _proposal_response(view)
 
 
 @router.get(
@@ -201,8 +265,10 @@ def propose_unlink(
     description="读取提案状态与影响分析；确认或拒绝前用户须能看到完整影响（T06 决策 A7）。",
     responses=_errors(401, 404),
 )
-def read_change_proposal(user: CurrentUserDep, proposal_id: LinkOrProposalIdPath) -> ChangeProposalResponse:
-    _implementation_stub()
+def read_change_proposal(
+    user: CurrentUserDep, db: DatabaseDep, proposal_id: LinkOrProposalIdPath
+) -> ChangeProposalResponse:
+    return _proposal_response(service.get_change_proposal(db, user, proposal_id))
 
 
 @router.post(
@@ -216,11 +282,13 @@ def read_change_proposal(user: CurrentUserDep, proposal_id: LinkOrProposalIdPath
 )
 def accept_change_proposal(
     user: CurrentUserDep,
+    db: DatabaseDep,
     proposal_id: LinkOrProposalIdPath,
     request: ChangeProposalActionRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ChangeProposalResponse:
-    _implementation_stub()
+    view = service.accept_change_proposal(db, user, proposal_id, idempotency_key=idempotency_key)
+    return _proposal_response(view)
 
 
 @router.post(
@@ -231,8 +299,10 @@ def accept_change_proposal(
 )
 def reject_change_proposal(
     user: CurrentUserDep,
+    db: DatabaseDep,
     proposal_id: LinkOrProposalIdPath,
     request: ChangeProposalActionRequest,
     idempotency_key: IdempotencyKeyDep,
 ) -> ChangeProposalResponse:
-    _implementation_stub()
+    view = service.reject_change_proposal(db, user, proposal_id, idempotency_key=idempotency_key)
+    return _proposal_response(view)

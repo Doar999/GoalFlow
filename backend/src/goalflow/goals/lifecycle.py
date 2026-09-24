@@ -3,12 +3,12 @@
 原则：状态转换是显式命令，不是任何统计量的副作用；终态单向；暂停只改变调度参与度，
 不改写执行事实。**没有任何路径可以由任务完成率、验证结果或回顾结论自动写入 completed。**
 
-与相邻工作包的两个接缝（交接卡决策 A11、A12），T05/T06 落地后替换：
+与相邻工作包的两个接缝（交接卡决策 A11、A12），均已随 T05/T06 落地：
 
 - 预算检查：`resolve_shared_budget` 已接入 T05 的排期模块——resume 检查仍是提示层，
   排期计算的冲突原因码是权威层（A11）。
-- 暂停影响：`compute_pause_impact` 未接入前返回空列表并标记 `not_wired`，
-  "空列表"仅因"未检查"，不代表"无影响"。
+- 暂停影响：`compute_pause_impact` 已接入 T06 的 task_dependencies 真实查询，
+  WIRED 恒成立，空列表即"确无影响"（A12）。
 
 `activate_goal` 是模块内部函数：用户面的唯一激活操作是 `activate_plan`
 （12 号第 7 节），同一事务内完成目标 draft → active（交接卡决策 A10）。
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from goalflow.auth.service import CurrentUser
@@ -27,6 +27,7 @@ from goalflow.contracts.enums import (
     ClosureKind,
     DependencyCheckStatus,
     GoalKind,
+    GoalLinkStatus,
     GoalStatus,
     PlanVersionStatus,
     TaskBatchStatus,
@@ -44,9 +45,11 @@ from goalflow.goals.models import (
     PlanVersion,
     Task,
     TaskBatch,
+    TaskSpec,
 )
 from goalflow.goals.service import GoalView, _get_goal, _goal_view, _now, _uuid
 from goalflow.idempotency import IdempotentRequest, ResultRef, compute_request_hash, run_idempotent
+from goalflow.links.models import GoalLink, TaskDependency
 
 
 @dataclass(frozen=True)
@@ -77,9 +80,33 @@ class TransitionView:
     dependency_check: DependencyCheckStatus = DependencyCheckStatus.NOT_WIRED
 
 
-def compute_pause_impact(goal_id: str, owner_id: str) -> list[AffectedDependency]:
-    """暂停影响的接缝（A12）：`task_dependencies` 归 T06 建，接入前恒为空并标记 not_wired。"""
-    return []
+def compute_pause_impact(session: Session, goal_id: str, owner_id: str) -> list[AffectedDependency]:
+    """暂停影响的真实计算（T06 回填 T04 决策 A12 接缝）。
+
+    查找"前驱任务属于被暂停目标"的生效依赖边（同计划内边无 link，或跨目标边挂在
+    active 关联下；proposed / removed 关联的边不计）：这些边的后继任务在暂停期间
+    会因前置无法推进而进入计算态 blocked。进行中与已完成的后继任务同样列出——
+    它们是"受影响"事实，如何处理由用户决定。
+    """
+    rows = session.scalars(
+        select(TaskDependency)
+        .join(Task, Task.id == TaskDependency.predecessor_task_id)
+        .outerjoin(GoalLink, GoalLink.id == TaskDependency.goal_link_id)
+        .where(
+            TaskDependency.owner_id == owner_id,
+            Task.goal_id == goal_id,
+            or_(TaskDependency.goal_link_id.is_(None), GoalLink.status == GoalLinkStatus.ACTIVE.value),
+        )
+    ).all()
+    successor_ids = sorted({edge.successor_task_id for edge in rows})
+    if not successor_ids:
+        return []
+    affected: list[AffectedDependency] = []
+    for task, spec in session.execute(
+        select(Task, TaskSpec).join(TaskSpec, TaskSpec.task_id == Task.id).where(Task.id.in_(successor_ids))
+    ).all():
+        affected.append(AffectedDependency(goal_id=task.goal_id, task_id=task.id, task_title=spec.title))
+    return affected
 
 
 def resolve_shared_budget(database: Database, user_id: str) -> SharedBudget | None:
@@ -256,11 +283,12 @@ def pause_goal(
             now=_now(),
         )
         goal = session.scalars(select(Goal).where(Goal.id == outcome.result.id)).one()
-        affected = compute_pause_impact(goal.id, user.user_id)
+        affected = compute_pause_impact(session, goal.id, user.user_id)
         return TransitionView(
             goal=_goal_view(goal),
             affected_dependent_tasks=affected,
-            dependency_check=(DependencyCheckStatus.WIRED if affected else DependencyCheckStatus.NOT_WIRED),
+            # T06 回填后依赖校验已真实执行：空列表即"确无影响"（T04 决策 A12 兑现）。
+            dependency_check=DependencyCheckStatus.WIRED,
         )
 
 

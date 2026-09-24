@@ -332,7 +332,7 @@ export interface paths {
         put?: never;
         /**
          * 确认建立关联
-         * @description proposed → active，并在同一事务内建立依赖边。确认时校验同用户、不自关联、目标对未重复与全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。
+         * @description proposed → active，并在同一事务内创建依赖边、校验全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。依赖边只在此事务内落库（03 第 57 行）。
          */
         post: operations["confirm_goal_link_api_goal_links__link_id__confirm_post"];
         delete?: never;
@@ -509,7 +509,7 @@ export interface paths {
         put?: never;
         /**
          * 提出目标关联
-         * @description 创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；目标对规范化存储。
+         * @description 创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；目标对规范化存储。依赖边在确认事务内才建立（03 第 57 行）。
          */
         post: operations["propose_goal_link_api_goals__goal_id__link_proposals_post"];
         delete?: never;
@@ -1212,9 +1212,16 @@ export interface components {
         ClosureKind: "completed" | "stopped";
         /**
          * ConfirmGoalLinkRequest
-         * @description 确认建立关联。确认时在同一事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节）。
+         * @description 确认建立关联。确认事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节），
+         *     并在此事务内创建依赖边（03 第 57 行：跨目标依赖仅在已确认关联下建立）。
          */
-        ConfirmGoalLinkRequest: Record<string, never>;
+        ConfirmGoalLinkRequest: {
+            /**
+             * Dependencies
+             * @description 与提案一致的任务依赖边；确认前依赖边不落库（PR-2 契约修正，见模块 docstring）
+             */
+            dependencies: components["schemas"]["TaskDependencyEdge"][];
+        };
         /** ConfirmProfileRequest */
         ConfirmProfileRequest: {
             /**
@@ -3409,7 +3416,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（GOAL_STATE_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3427,7 +3434,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            /** @description 服务内部错误 */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3492,7 +3499,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（GOAL_STATE_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3510,7 +3517,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            /** @description 服务内部错误 */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3575,7 +3582,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（GOAL_STATE_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3593,7 +3600,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            /** @description 服务内部错误 */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3658,7 +3665,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（GOAL_STATE_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3676,7 +3683,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            /** @description 服务内部错误 */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -4220,7 +4227,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED 语义下的终态冲突） */
+            /** @description 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（GOAL_STATE_CONFLICT） */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4238,7 +4245,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description 接口尚未实现（业务实现随 T06 PR-2 接入交付） */
+            /** @description 服务内部错误 */
             500: {
                 headers: {
                     [name: string]: unknown;
