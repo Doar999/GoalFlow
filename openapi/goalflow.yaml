@@ -328,6 +328,18 @@ components:
       - remaining_minutes
       title: CapacitySummaryView
       type: object
+    ChangeClass:
+      description: '变更提案的判级（03 第 3 节 change_class，取值出处 18 号第 3 节、D04）。
+
+
+        本期只含目标关联解除所需的两级；record_only / auto_schedule / auto_plan_local
+
+        归 T12，届时随其契约 PR 扩展 CHECK（T06 决策 A5）。'
+      enum:
+      - confirmation_required
+      - profile_revision_required
+      title: ChangeClass
+      type: string
     ChangePasswordRequest:
       properties:
         current_password:
@@ -348,6 +360,77 @@ components:
       - new_password
       title: ChangePasswordRequest
       type: object
+    ChangeProposalActionRequest:
+      description: 提案终态动作（接受 / 拒绝）。接受和应用在同一事务完成（03 第 3 节）。
+      properties: {}
+      title: ChangeProposalActionRequest
+      type: object
+    ChangeProposalResponse:
+      description: 变更提案。解除关联时 change_class=confirmation_required（改变成功标准时升级，18 号第 3 节）。
+      properties:
+        accepted_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Accepted At
+        applied_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Applied At
+        change_class:
+          $ref: '#/components/schemas/ChangeClass'
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        goal_id:
+          title: Goal Id
+          type: string
+        id:
+          title: Id
+          type: string
+        impact:
+          $ref: '#/components/schemas/UnlinkImpact'
+        input_revision:
+          description: 提案生成时的 planning revision；落后于当前值即为 stale（T06 决策 A6）
+          title: Input Revision
+          type: integer
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        status:
+          $ref: '#/components/schemas/ChangeProposalStatus'
+          description: 提案基础版本已变时为 stale，不沿用旧确认
+      required:
+      - id
+      - goal_id
+      - change_class
+      - status
+      - input_revision
+      - impact
+      - reason
+      - created_at
+      - accepted_at
+      - applied_at
+      title: ChangeProposalResponse
+      type: object
+    ChangeProposalStatus:
+      description: '变更提案状态（03 第 3 节 change_proposals.status）。
+
+
+        接受和应用在同一事务完成；提案基础版本已变时置 stale。'
+      enum:
+      - pending
+      - applied
+      - rejected
+      - stale
+      title: ChangeProposalStatus
+      type: string
     ChangeProposalView:
       description: '需要用户确认的变更建议（13 号第 6 节 pending change proposal）。
 
@@ -415,6 +498,11 @@ components:
       - stopped
       title: ClosureKind
       type: string
+    ConfirmGoalLinkRequest:
+      description: 确认建立关联。确认时在同一事务内校验同用户、不自关联、目标对不重复与全图无环（18 号第 2 节）。
+      properties: {}
+      title: ConfirmGoalLinkRequest
+      type: object
     ConfirmProfileRequest:
       properties:
         expected_revision:
@@ -593,6 +681,18 @@ components:
       - wired
       - not_wired
       title: DependencyCheckStatus
+      type: string
+    DependencyOutcome:
+      description: '任务依赖的满足条件（03 第 3 节 required_outcome；产品 13 号第 3 节）。
+
+
+        区分"执行完成"与"验证通过"；健身领域不允许 verification_passed 是应用层
+
+        策略谓词 fitness_dependency_outcome（16 号第 2 节），不在 DB CHECK 里。'
+      enum:
+      - execution_completed
+      - verification_passed
+      title: DependencyOutcome
       type: string
     DeriveGoalRequest:
       properties:
@@ -863,6 +963,60 @@ components:
       - achievement
       - maintenance
       title: GoalKind
+      type: string
+    GoalLinkResponse:
+      description: 目标关联当前状态。removed 行保留归档（T06 决策 A2）。
+      properties:
+        confirmed_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: 确认时间；proposed 阶段为空
+          title: Confirmed At
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        goal_a_id:
+          description: 规范化目标对的较小 id 一方
+          title: Goal A Id
+          type: string
+        goal_b_id:
+          description: 规范化目标对的较大 id 一方
+          title: Goal B Id
+          type: string
+        id:
+          title: Id
+          type: string
+        status:
+          $ref: '#/components/schemas/GoalLinkStatus'
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - id
+      - goal_a_id
+      - goal_b_id
+      - status
+      - confirmed_at
+      - created_at
+      - updated_at
+      title: GoalLinkResponse
+      type: object
+    GoalLinkStatus:
+      description: '目标关联状态（03 第 2 节；18-goal-link-design.md 第 1 节）。
+
+
+        没有 inactive——软失效会产生产品规则禁止的"关联已解除但依赖边仍在"的中间状态。
+
+        removed 行保留归档，解除后同一目标对可重新建立（T06 决策 A2）。'
+      enum:
+      - proposed
+      - active
+      - removed
+      title: GoalLinkStatus
       type: string
     GoalResponse:
       description: 目标当前状态。生命周期字段的语义见 12-goal-lifecycle.md（D12）。
@@ -1643,6 +1797,31 @@ components:
       - confirmed_at
       title: ProfileResponse
       type: object
+    ProposeGoalLinkRequest:
+      description: 提出关联。必须携带具体任务关系（18 号第 2 节）。
+      properties:
+        dependencies:
+          description: 具体的任务先后依赖边；至少一条。此时仅创建 proposed 关联，确认后才建立依赖边
+          items:
+            $ref: '#/components/schemas/TaskDependencyEdge'
+          minItems: 1
+          title: Dependencies
+          type: array
+        target_goal_id:
+          description: 关联对方目标；连同路径 goal_id 规范化为目标对
+          maxLength: 36
+          title: Target Goal Id
+          type: string
+      required:
+      - target_goal_id
+      - dependencies
+      title: ProposeGoalLinkRequest
+      type: object
+    ProposeUnlinkRequest:
+      description: 生成解除提案及影响分析（18 号第 3 节）。操作本身不被未完成依赖阻止。
+      properties: {}
+      title: ProposeUnlinkRequest
+      type: object
     RegisterRequest:
       properties:
         account_identifier:
@@ -2049,6 +2228,28 @@ components:
       - locked
       title: TaskDayConstraintKind
       type: string
+    TaskDependencyEdge:
+      description: 关联携带的一条具体任务依赖（18 号第 2 节：不接受只有两个 goal_id 的"相关"声明）。
+      properties:
+        predecessor_task_id:
+          description: 前驱任务（须先完成/通过的一方）
+          maxLength: 36
+          title: Predecessor Task Id
+          type: string
+        required_outcome:
+          $ref: '#/components/schemas/DependencyOutcome'
+          description: 满足条件：执行完成或验证通过
+        successor_task_id:
+          description: 后继任务
+          maxLength: 36
+          title: Successor Task Id
+          type: string
+      required:
+      - predecessor_task_id
+      - successor_task_id
+      - required_outcome
+      title: TaskDependencyEdge
+      type: object
     TaskExecutionStatus:
       description: '任务执行状态（03 第 3 节）。
 
@@ -2080,6 +2281,44 @@ components:
       required:
       - expected_revision
       title: UndoClosureRequest
+      type: object
+    UnlinkImpact:
+      description: 解除提案的影响分析（18 号第 3 节）。结构随业务实现细化，首版用说明性键。
+      properties:
+        affected_milestones:
+          description: 受影响的里程碑与期限
+          items:
+            additionalProperties: true
+            type: object
+          title: Affected Milestones
+          type: array
+        criteria_unsatisfiable:
+          description: 完成标准引用了前驱产出、解除后将不可执行的后继任务
+          items:
+            additionalProperties: true
+            type: object
+          title: Criteria Unsatisfiable
+          type: array
+        satisfied_edges:
+          description: 已满足的依赖边；随关联归档，无需处理
+          items:
+            additionalProperties: true
+            type: object
+          title: Satisfied Edges
+          type: array
+        unsatisfied_edges:
+          description: 该关联下未满足的依赖边清单，每条含后继任务及其当前执行状态
+          items:
+            additionalProperties: true
+            type: object
+          title: Unsatisfied Edges
+          type: array
+      required:
+      - unsatisfied_edges
+      - criteria_unsatisfiable
+      - affected_milestones
+      - satisfied_edges
+      title: UnlinkImpact
       type: object
     UpdateAvailabilityRequest:
       description: 提交周额度与生效日期（05-module-contracts update_availability）。
@@ -2774,6 +3013,350 @@ paths:
       summary: 声明单日额度
       tags:
       - scheduling
+  /api/change-proposals/{proposal_id}:
+    get:
+      description: 读取提案状态与影响分析；确认或拒绝前用户须能看到完整影响（T06 决策 A7）。
+      operationId: read_change_proposal_api_change_proposals__proposal_id__get
+      parameters:
+      - description: 关联或提案 ID
+        in: path
+        name: proposal_id
+        required: true
+        schema:
+          description: 关联或提案 ID
+          maxLength: 36
+          title: Proposal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeProposalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: 读取变更提案
+      tags:
+      - goal-links
+  /api/change-proposals/{proposal_id}/accept:
+    post:
+      description: 接受并在同一事务内原子应用：置关联 removed、删除依赖边、处理 criteria_unsatisfiable 的未开始任务、写审计并递增 planning revision（18
+        号第 3 节）。中途失败两者都不变。
+      operationId: accept_change_proposal_api_change_proposals__proposal_id__accept_post
+      parameters:
+      - description: 关联或提案 ID
+        in: path
+        name: proposal_id
+        required: true
+        schema:
+          description: 关联或提案 ID
+          maxLength: 36
+          title: Proposal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeProposalActionRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeProposalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED
+            语义下的终态冲突）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（业务实现随 T06 PR-2 接入交付）
+      summary: 接受变更提案
+      tags:
+      - goal-links
+  /api/change-proposals/{proposal_id}/reject:
+    post:
+      description: 拒绝后提案置 rejected，关联与依赖保持原样，问题仍然可见（产品 13 号第 4 节）。
+      operationId: reject_change_proposal_api_change_proposals__proposal_id__reject_post
+      parameters:
+      - description: 关联或提案 ID
+        in: path
+        name: proposal_id
+        required: true
+        schema:
+          description: 关联或提案 ID
+          maxLength: 36
+          title: Proposal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeProposalActionRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeProposalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED
+            语义下的终态冲突）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（业务实现随 T06 PR-2 接入交付）
+      summary: 拒绝变更提案
+      tags:
+      - goal-links
+  /api/goal-links/{link_id}/confirm:
+    post:
+      description: proposed → active，并在同一事务内建立依赖边。确认时校验同用户、不自关联、目标对未重复与全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18
+        号第 2 节）。
+      operationId: confirm_goal_link_api_goal_links__link_id__confirm_post
+      parameters:
+      - description: 关联或提案 ID
+        in: path
+        name: link_id
+        required: true
+        schema:
+          description: 关联或提案 ID
+          maxLength: 36
+          title: Link Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmGoalLinkRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalLinkResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED
+            语义下的终态冲突）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（业务实现随 T06 PR-2 接入交付）
+      summary: 确认建立关联
+      tags:
+      - goal-links
+  /api/goal-links/{link_id}/unlink-proposals:
+    post:
+      description: 计算并返回解除影响：未满足依赖边、后继任务执行状态、criteria_unsatisfiable 标记、受影响的里程碑与期限；已满足边随关联归档（18 号第 3 节）。操作不被未完成依赖阻止。
+      operationId: propose_unlink_api_goal_links__link_id__unlink_proposals_post
+      parameters:
+      - description: 关联或提案 ID
+        in: path
+        name: link_id
+        required: true
+        schema:
+          description: 关联或提案 ID
+          maxLength: 36
+          title: Link Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeUnlinkRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeProposalResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED
+            语义下的终态冲突）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（业务实现随 T06 PR-2 接入交付）
+      summary: 生成解除提案
+      tags:
+      - goal-links
   /api/goals:
     post:
       description: 从自然描述开始创建 draft 目标与 planning_session（R02）。领域由服务端推断。
@@ -3200,6 +3783,81 @@ paths:
       summary: 以此为起点新建
       tags:
       - goals
+  /api/goals/{goal_id}/link-proposals:
+    post:
+      description: 创建 proposed 关联，必须携带具体的任务依赖关系（18 号第 2 节）。两目标须同属当前用户；目标对规范化存储。
+      operationId: propose_goal_link_api_goals__goal_id__link_proposals_post
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeGoalLinkRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalLinkResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标、关联或提案不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 加入新依赖边后依赖图成环（DEPENDENCY_CYCLE）、Idempotency-Key 已用于另一项请求（IDEMPOTENCY_KEY_CONFLICT）、提案基础版本已变（INPUT_STALE）或提案状态不允许该操作（VALIDATION_FAILED
+            语义下的终态冲突）
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 接口尚未实现（业务实现随 T06 PR-2 接入交付）
+      summary: 提出目标关联
+      tags:
+      - goal-links
   /api/goals/{goal_id}/pause:
     post:
       description: active → paused。不改写任何任务状态，周投入需求从共享预算释放；响应携带受影响的跨目标依赖（D12 第 5 节）。

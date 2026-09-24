@@ -262,3 +262,52 @@ class CapacityBasis(StrEnum):
 
     TOTAL = "total"
     REMAINING = "remaining"
+
+
+# —— 目标关联与任务依赖（T06 契约 PR；取值出处见各 docstring）——
+
+
+class GoalLinkStatus(StrEnum):
+    """目标关联状态（03 第 2 节；18-goal-link-design.md 第 1 节）。
+
+    没有 inactive——软失效会产生产品规则禁止的"关联已解除但依赖边仍在"的中间状态。
+    removed 行保留归档，解除后同一目标对可重新建立（T06 决策 A2）。
+    """
+
+    PROPOSED = "proposed"
+    ACTIVE = "active"
+    REMOVED = "removed"
+
+
+class DependencyOutcome(StrEnum):
+    """任务依赖的满足条件（03 第 3 节 required_outcome；产品 13 号第 3 节）。
+
+    区分"执行完成"与"验证通过"；健身领域不允许 verification_passed 是应用层
+    策略谓词 fitness_dependency_outcome（16 号第 2 节），不在 DB CHECK 里。
+    """
+
+    EXECUTION_COMPLETED = "execution_completed"
+    VERIFICATION_PASSED = "verification_passed"
+
+
+class ChangeProposalStatus(StrEnum):
+    """变更提案状态（03 第 3 节 change_proposals.status）。
+
+    接受和应用在同一事务完成；提案基础版本已变时置 stale。
+    """
+
+    PENDING = "pending"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    STALE = "stale"
+
+
+class ChangeClass(StrEnum):
+    """变更提案的判级（03 第 3 节 change_class，取值出处 18 号第 3 节、D04）。
+
+    本期只含目标关联解除所需的两级；record_only / auto_schedule / auto_plan_local
+    归 T12，届时随其契约 PR 扩展 CHECK（T06 决策 A5）。
+    """
+
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    PROFILE_REVISION_REQUIRED = "profile_revision_required"
