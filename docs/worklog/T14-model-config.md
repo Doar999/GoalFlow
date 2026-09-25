@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T14（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | Giraffe12311（前后端与数据负责人） |
-| 状态 | 进行中：PR-1 已合并（#26）；PR-2 业务实现完成，待用户批准提交 |
-| 更新日期 | 2026-09-24 |
-| 相关 PR | #26（PR-1 契约面，已合并）；PR-2 待建 |
+| 状态 | 进行中：契约与六端点业务已合并；T08 作业调用 Interface 已实现，待评审 |
+| 更新日期 | 2026-09-25 |
+| 相关 PR | #26（契约面）、#28（业务实现），均已合并 |
 
 > 本文件是给**人和 AI 共同阅读**的任务说明书与交接材料。它描述**当前状态**，不是日志：更新时直接改写成最新内容。
 
@@ -22,6 +22,7 @@
 
 - **PR-1（契约面）**：迁移 0007、`model_configs` 模块 ORM、契约枚举与错误码、6 端点契约桩、OpenAPI 与前端类型导出。
 - **PR-2（业务实现）**：凭证信封加密、出站地址校验、/test 真实调用、默认切换事务、限流与全部验收测试。
+- **后续独立修补 PR**：给 T08 作业提供按 owner、配置 ID 与 revision 解析可用模型的窄 Interface；`/test` 与作业构造均尊重 OpenAI 配置的 `api_mode`。不改 HTTP 或数据库契约。
 
 ### 可修改路径
 
@@ -84,6 +85,8 @@ backend/src/goalflow/auth/、goals/、links/、scheduling/、jobs/ 的模块代�
 | A12 | **禁用与删除是两个操作**：PATCH 增加 enabled 字段，false=禁用（凭证保留、可重新启用）；DELETE=删除归档（A4）。列表返回未删除配置（含禁用）；已禁用/已删除配置不能设为默认（409） | 产品 06 号第 2 节"支持替换、禁用和删除"（建议→采纳）；07 号 DELETE 条目仅描述删除 | PATCH 契约、迁移 0007、列表语义 | 否 |
 | A13 | 本地/内网允许列表的配置载体定为**环境变量** `GOALFLOW_MODEL_ENDPOINT_ALLOWLIST`（逗号分隔主机名/IP/CIDR，留空=本地/内网全部拒绝），随本契约 PR 加入 config.py 与 .env.example | 先例：T15"出站开关为实例级环境变量"、08 号 `GOALFLOW_ALLOW_REGISTRATION`、T03 C7；07 号仅说"实例管理员设置"未定载体，环境变量是唯一已确立的实例策略载体模式；环境变量属公共契约故随契约 PR | config.py、.env.example、PR-2 出站校验 | 否 |
 | A14 | /test 频控**仅作滥用兜底**，阈值放宽至**每用户 1000 次/15 分钟**（用户决策：几乎无限制），进程内固定窗口、超限返回 RATE_LIMITED 与 Retry-After，阈值写成模块常量，PR-2 可再调 | 08 号第 4 节限流先例仅作量级参考；用户明确要求几乎不限制正常使用 | /test 端点、PR-2 | 否 |
+| A15 | 作业侧只接收非敏感的配置 ID 与 revision，T14 模块按 owner 复查启用/删除/版本、解密并校验出站地址后构造模型；默认配置查询只返回非敏感引用。T08 不直接读 `model_configs` 表或解密密文 | T08/T14 模块边界，仓库负责人 2026-09-25 确认按此方案开发 | T08/T14 内部 Interface | 否，不改公共契约 |
+| A16 | OpenAI 的 `api_mode` 在 `/test` 与作业模型构造时都明确映射到 LangChain 的 API 模式参数；Anthropic 不传该参数。保留 `/test` 的短超时、低输出与显式重试上限，作业侧由调用方给出自己的上限 | 已落地的 `api_mode` 契约与 07 号设计，仓库负责人 2026-09-25 确认修补 | T14 模型构造 | 否，不改公共契约 |
 
 ## 5. 验收场景
 
@@ -105,8 +108,7 @@ backend/src/goalflow/auth/、goals/、links/、scheduling/、jobs/ 的模块代�
 
 - 已完成：PR-1 契约面（#26 已合并）；**PR-2 业务实现完成并通过验证**——信封加密（crypto.py，AES-GCM 双层信封 + 密钥版本）、出站校验（outbound.py，协议/端口/DNS/内网段黑名单/允许列表，调用前重校验）、/test 真实调用（probes.py，直接构造 chat model，三探测：基本生成/结构化输出/流式，max_retries=1、timeout 15s、错误五类脱敏分类）、六端点接线、频控兜底（1000 次/15 分钟，决策 A14）、默认切换事务、61 条模块测试。
 - 修订记录：提交 PR-1 前按用户提示扫描全库文档，据产品 06 号与既有先例修订决策 A4 并新增 A11–A13（Key 可选、禁用独立操作、允许列表载体），契约面已同步；A14（/test 频控）经两轮调整定为**仅作滥用兜底（每用户 1000 次/15 分钟）**。
-- 待办：向仓库负责人展示 PR-2 预提交清单并获批准 → 提交 → 建 PR。
-- PR-3 收尾（交接卡状态改写、验收勾选）随后。
+- 已实现、待评审：`get_default_for_job` 只返回非敏感引用；`build_model_for_job` 按 owner、配置 ID 与 revision 复查，事务外解密、重校验出站地址并构造模型；`/test` 与作业调用均映射 `api_mode`。新增 7 条回归用例。双 provider 真实评估由 T08 完成。
 
 ## 7. 验证结果
 
@@ -148,6 +150,22 @@ $ npx pnpm@9.15.4 --dir frontend exec tsc --noEmit / run lint / run test
 - /test 探测经 monkeypatch 桩验证，不产生真实网络调用；真实 provider 验收（openai/anthropic 各路径）按 07 号要求在部署环境由用户执行。
 
 环境注记：本机沙箱的 safe-delete 钩子会对"批量删除临时文件"的合法测试（db 模块的迁移目录复制清理、db_compat 备份恢复演练）注入 SystemExit 并级联毒化后续夹具（"assert not self._finalizers"），在沙箱内跑全量套件必现、绕过沙箱即全绿——与 T06 交接卡记录同源，判定以绕过沙箱后的完整输出为准。
+
+**作业 Interface 修补（2026-09-25，Windows / Git Bash）：**
+
+```text
+$ bash scripts/check.sh
+后端：138 files already formatted；Ruff All checks passed!；mypy 66 source files 无问题
+前端：锁文件一致；eslint、tsc --noEmit、Prettier 均通过
+契约一致；未发现疑似凭证；检查通过
+
+$ bash scripts/test.sh
+后端：444 passed, 1 warning in 53.41s（含新增 7 条）
+前端：Test Files 3 passed (3), Tests 20 passed (20)
+测试通过
+```
+
+数据库相关用例沿用 `tests/model_configs/conftest.py` 的真实迁移库文件、WAL 和生产连接装配。唯一 warning 为 Starlette 对 anyio 别名的既有弃用提示；本次未执行真实 provider 网络调用。
 
 ## 8. 未决问题
 

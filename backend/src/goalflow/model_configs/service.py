@@ -73,6 +73,17 @@ class ModelTestView:
     tested_at: datetime
 
 
+@dataclass(frozen=True)
+class ModelConfigRef:
+    """供作业载荷绑定的非敏感模型配置引用。"""
+
+    id: str
+    revision: int
+    model_provider: str
+    api_mode: str | None
+    model_id: str
+
+
 def _crypto() -> CredentialCrypto:
     secret = get_settings().credential_encryption_key
     if secret is None:
@@ -120,6 +131,74 @@ def _config_view(config: ModelConfig) -> ModelConfigView:
         last_test_at=config.last_test_at,
         created_at=config.created_at,
         updated_at=config.updated_at,
+    )
+
+
+def get_default_for_job(db: Database, *, owner_id: str) -> ModelConfigRef:
+    """新作业只绑定当前默认配置的 ID 与版本；默认切换不改旧作业。"""
+    with db.read() as session:
+        config = session.scalars(
+            select(ModelConfig).where(
+                ModelConfig.owner_id == owner_id,
+                ModelConfig.is_default.is_(True),
+                ModelConfig.enabled.is_(True),
+                ModelConfig.deleted_at.is_(None),
+            )
+        ).one_or_none()
+        if config is None:
+            raise GoalflowError(ErrorCode.MODEL_UNAVAILABLE, "请先选择可用的默认模型配置")
+        return ModelConfigRef(
+            id=config.id,
+            revision=config.revision,
+            model_provider=config.model_provider,
+            api_mode=config.api_mode,
+            model_id=config.model_id,
+        )
+
+
+def build_model_for_job(
+    db: Database,
+    *,
+    owner_id: str,
+    config_id: str,
+    expected_revision: int,
+    timeout_seconds: float,
+    max_retries: int,
+    max_tokens: int,
+) -> Any:
+    """复查归属和版本，在事务外解密与校验地址，再构造本次尝试的模型。"""
+    with db.read() as session:
+        config = session.scalars(
+            select(ModelConfig).where(ModelConfig.id == config_id, ModelConfig.owner_id == owner_id)
+        ).one_or_none()
+        if (
+            config is None
+            or config.deleted_at is not None
+            or not config.enabled
+            or config.revision != expected_revision
+        ):
+            raise GoalflowError(ErrorCode.INPUT_STALE, "模型配置已变更，请重新发起作业")
+        provider = ModelProvider(config.model_provider)
+        api_mode = ModelApiMode(config.api_mode) if config.api_mode is not None else None
+        model_id = config.model_id
+        base_url = config.base_url
+        ciphertext = config.credential_ciphertext
+
+    api_key = _crypto().decrypt(ciphertext) if ciphertext is not None else None
+    if base_url is not None:
+        _outbound_policy().validate(base_url)
+
+    from goalflow.model_configs.probes import build_chat_model
+
+    return build_chat_model(
+        model_provider=provider,
+        api_mode=api_mode,
+        model_id=model_id,
+        api_key=api_key,
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
+        max_tokens=max_tokens,
     )
 
 
@@ -343,6 +422,7 @@ def test_model_config(db: Database, user: CurrentUser, config_id: str) -> ModelT
             raise GoalflowError(ErrorCode.NOT_FOUND, "模型配置不存在")
         config_revision = config.revision
         provider = ModelProvider(config.model_provider)
+        api_mode = ModelApiMode(config.api_mode) if config.api_mode is not None else None
         base_url = config.base_url
         model_id = config.model_id
         ciphertext = config.credential_ciphertext
@@ -354,7 +434,13 @@ def test_model_config(db: Database, user: CurrentUser, config_id: str) -> ModelT
 
     from goalflow.model_configs.probes import build_chat_model
 
-    model = build_chat_model(model_provider=provider, model_id=model_id, api_key=api_key, base_url=base_url)
+    model = build_chat_model(
+        model_provider=provider,
+        api_mode=api_mode,
+        model_id=model_id,
+        api_key=api_key,
+        base_url=base_url,
+    )
     probes = run_capability_probes(model)
 
     basic = probes["basic_generation"]
