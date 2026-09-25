@@ -321,6 +321,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 按顺序读取澄清消息
+         * @description 刷新页面后按对话内 sequence 补读消息；消息只属于当前用户。
+         */
+        get: operations["list_messages_api_conversations__conversation_id__messages_get"];
+        put?: never;
+        /**
+         * 提交澄清消息
+         * @description 原子保存用户消息与澄清作业；首次及幂等重放均返回 202 和同一作业引用。
+         */
+        post: operations["submit_message_api_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/goal-links/{link_id}/confirm": {
         parameters: {
             query?: never;
@@ -472,6 +496,26 @@ export interface paths {
          * @description 结束操作后 24 小时内可撤销，回到结束前状态（D12 第 6 节）；窗口外返回 GOAL_STATE_CONFLICT。
          */
         post: operations["undo_closure_api_goals__goal_id__closure_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goals/{goal_id}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取目标的澄清对话
+         * @description 按创建时间列出目标关联的对话；路径目标必须属于当前用户。
+         */
+        get: operations["list_goal_conversations_api_goals__goal_id__conversations_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1364,6 +1408,30 @@ export interface components {
              */
             expected_revision: number;
         };
+        /** ConversationResponse */
+        ConversationResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Goal Id */
+            goal_id: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Revision
+             * @description 服务端当前版本号
+             */
+            revision: number;
+            /** Task Id */
+            task_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** CreateGoalRequest */
         CreateGoalRequest: {
             /**
@@ -1688,6 +1756,11 @@ export interface components {
              */
             profile_id: string;
         };
+        /** GoalConversationsResponse */
+        GoalConversationsResponse: {
+            /** Items */
+            items: components["schemas"]["ConversationResponse"][];
+        };
         /**
          * GoalDomain
          * @description Agent 的内部策略路由，不是用户必填标签（03 第 2 节）。
@@ -2009,6 +2082,41 @@ export interface components {
              * Format: password
              */
             password: string;
+        };
+        /** MessageResponse */
+        MessageResponse: {
+            /** Content */
+            content: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Job Id */
+            job_id: string | null;
+            role: components["schemas"]["MessageRole"];
+            /** Sequence */
+            sequence: number;
+        };
+        /**
+         * MessageRole
+         * @description 持久化对话消息的发言方；模型内部 system/tool 消息不落用户对话表。
+         * @enum {string}
+         */
+        MessageRole: "user" | "assistant";
+        /** MessagesResponse */
+        MessagesResponse: {
+            /** Items */
+            items: components["schemas"]["MessageResponse"][];
+            /**
+             * Next After Sequence
+             * @description 非空表示还有消息，下一页以此值作为 after_sequence
+             */
+            next_after_sequence: number | null;
         };
         /**
          * ModelApiMode
@@ -2710,6 +2818,24 @@ export interface components {
              * @description 要设为默认的配置；必须属于当前用户且未删除
              */
             config_id: string;
+        };
+        /** SubmitMessageRequest */
+        SubmitMessageRequest: {
+            /**
+             * Content
+             * @description 用户补充的澄清文本
+             */
+            content: string;
+            /**
+             * Expected Revision
+             * @description 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+             */
+            expected_revision: number;
+        };
+        /** SubmittedMessageResponse */
+        SubmittedMessageResponse: {
+            job: components["schemas"]["JobResponse"];
+            message: components["schemas"]["MessageResponse"];
         };
         /**
          * TaskConstraintResponse
@@ -3864,6 +3990,160 @@ export interface operations {
             };
         };
     };
+    list_messages_api_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                after_sequence?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 对话 ID */
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagesResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或对话不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 对话业务接线尚未实现 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_message_api_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description 对话 ID */
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmittedMessageResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求来源不受信任 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或对话不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 对话版本已更新，或 Idempotency-Key 已用于另一项请求 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求参数校验未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 对话业务接线尚未实现 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 默认模型配置不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     confirm_goal_link_api_goal_links__link_id__confirm_post: {
         parameters: {
             query?: never;
@@ -4426,6 +4706,65 @@ export interface operations {
             };
             /** @description 请求参数校验未通过 */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_goal_conversations_api_goals__goal_id__conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 目标 ID */
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalConversationsResponse"];
+                };
+            };
+            /** @description 未登录或会话失效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标或对话不存在，或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 对话业务接线尚未实现 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
