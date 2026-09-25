@@ -4,9 +4,9 @@
 | --- | --- |
 | 工作包 | T08（见 [06-delivery-plan.md](../development/06-delivery-plan.md)） |
 | 负责人 | 待指定（Agent 负责人） |
-| 状态 | 未开始：交接卡已建立，待对齐契约与 T14 业务接口 |
-| 更新日期 | 2026-09-24 |
-| 相关 PR | 暂无；T14 契约面 PR #26 已合并 |
+| 状态 | 进行中：T14 已交付，先补作业调用 Interface 再建 T08 契约 |
+| 更新日期 | 2026-09-25 |
+| 相关 PR | #27（交接卡）、T14 #26/#28（前置），均已合并 |
 
 ## 1. 目标
 
@@ -27,7 +27,7 @@ docs/worklog/T08-model-and-domain-strategy.md
 docs/worklog/README.md                 （仅索引）
 ```
 
-澄清消息的持久化与 HTTP 接线、T14 配置读取 Interface、T04/T07 的作业接缝需要先明确模块所有权和契约，再把对应路径逐项写入本卡；上述路径清单不授权直接修改其他模块内部文件。
+澄清消息的持久化与 HTTP 接线、T04/T07 的作业接缝需要先明确模块所有权和契约，再把对应路径逐项写入本卡。仓库负责人已确认由本轮开发在**独立 T14 修补 PR** 中修改 `model_configs/`，交付作业调用 Interface 与 `api_mode` 映射；T08 业务实现 PR 仍不直接修改 T14 内部文件。
 
 ### 公共契约候选（单独 PR，经负责人确认后界定路径）
 
@@ -76,7 +76,7 @@ docs/product/、docs/development/、docs/engineering/
 | [05-module-contracts.md](../development/05-module-contracts.md) | `run_step(step_kind, input_snapshot) → validated_candidate` 等模块边界 | 建议契约；实际 HTTP 形状以已导出的 OpenAPI 为准 |
 | [06-delivery-plan.md](../development/06-delivery-plan.md) | T08 交付、T14 前置、T09 后续依赖 | 任务拆解建议；本卡确定 T08 实施边界 |
 | [T07-job-execution.md](T07-job-execution.md) | 作业处理函数、提交协议 E13/E14/E18、HTTP 202 验收转交 T08 | 已完成、相关决策已确认 |
-| [T14-model-config.md](T14-model-config.md) | 模型配置契约与 T08 分工；PR #26 的迁移、枚举、六个端点 | 契约面已合并；业务实现 PR-2 尚未交付 |
+| [T14-model-config.md](T14-model-config.md) | 模型配置契约与 T08 分工；PR #26/#28 的迁移、枚举和六个端点 | 契约与业务实现已合并；作业侧 Interface 待独立修补 PR |
 | `backend/pyproject.toml`、`backend/uv.lock` | LangChain、LangGraph 依赖和锁定版本 | T02 已落地的工程事实；实现前仍需核对所用 API 的官方文档 |
 
 ## 4. 决策与假设
@@ -85,7 +85,7 @@ docs/product/、docs/development/、docs/engineering/
 | --- | --- | --- | --- | --- |
 | A1 | T08 的公开业务出口保持为「输入快照 → 已校验候选或可解释错误」；图节点不直接修改目标、计划、排期或作业表。具体函数签名在首个实现 PR 前定稿 | 05 号建议契约、04 号短生命周期图约束 | Agent 模块内部及 T09 消费接缝 | 若改变跨模块接口，先走 RFC/契约确认 |
 | A2 | 首个可执行切片先用固定模型样例验证来源、readiness、三领域硬约束与版本过期，再接真实模型；固定样例结果明确标记，不能计作真实模型质量验收 | 01 号契约规范第 9 节、06 号交付计划 | T08 的 PR 顺序与验收 | 否 |
-| A3 | T14 PR-1 已固定 `model_provider`、`api_mode` 和配置 revision；T08 仅绑定配置 ID/revision 与非敏感快照。配置改动、禁用或删除后的读取/重试口径须在 T14 PR-2 Interface 可用后联调，不直接读取其内部表作为跨模块捷径 | T14 交接卡 A3/A4/A5、07 号模型设计 | T08/T14 接缝 | 如需新公共字段或变更跨模块行为，需确认 |
+| A3 | T14 已固定 `model_provider`、`api_mode` 和配置 revision；T08 仅绑定配置 ID/revision 与非敏感快照。T14 在独立修补 PR 中提供按 owner 校验、解析并构造模型的 Interface；T08 不直接读取其内部表或凭证 | T14 交接卡 A3/A4/A5/A15/A16；仓库负责人 2026-09-25 确认 | T08/T14 接缝 | 否，按已确认的独立修补 PR 实施 |
 | A4 | `model_calls` 在数据模型中有建议字段，但尚无迁移；用量缺失须保持「未知」，不能记作 0。表结构、记录时点及失败调用口径在独立契约 PR 中确认；不在本卡指定未经批准的迁移序号 | 03 号数据模型、Q07 建议质量要求 | 用量与数据库契约 | 是，涉及迁移和跨模块读取 |
 | A5 | T08 仅确认「两个 provider 分别验收」；具体模型 ID、OpenAI API 模式覆盖范围、原生结构化输出能力门槛和真实评估样例仍需在实现前收敛。T14 配置契约允许的 API 模式不等于 T08 已完成对应真实调用验证 | PRD D08、07 号建议能力契约、T14 PR #26 | 真实模型验收 | 跨模块能力契约需负责人确认 |
 | A6 | T07 首个真实业务作业的 HTTP 验收由 T08 承接：新提交返回 202 与 `job_id`，重复请求返回原作业引用；图内模型调用在写事务外，提交回调内重新检查输入版本和租约 | T07 E13/E14 与第 5 节未完成验收 | 澄清作业接线 | 否，沿用已确认协议 |
@@ -107,9 +107,9 @@ docs/product/、docs/development/、docs/engineering/
 
 ## 6. 进展
 
-- 已完成：T08 交接卡建立；核对 T02/T07 已完成、T14 契约 PR #26 已合并，当前仓库尚无 `agent/`、`model_calls`、`conversations/messages` 实现。
-- 进行中：无业务代码。
-- 未开始：范围与 Interface 确认、公共契约 PR、规则与固定样例、模型和作业接线、双 provider 真实评估。T14 PR-2 仍是配置读取与真实调用的前置输入。
+- 已完成：T08 交接卡建立并合并（#27）；T02/T07 与 T14 契约/业务 PR #26/#28 已合并；当前仓库尚无 `agent/`、`model_calls`、`conversations/messages` 实现。
+- 进行中：T14 作业调用 Interface 与 `api_mode` 映射的独立修补 PR，代码及回归测试已通过本地门禁、待评审。
+- 未开始：T08 公共契约 PR、规则与固定样例、模型和作业接线、双 provider 真实评估。
 
 ## 7. 验证结果
 
@@ -133,7 +133,7 @@ $ bash scripts/test.sh  （通过 Git Bash 执行）
 
 | 问题 | 影响 | 需要谁决策 |
 | --- | --- | --- |
-| T14 PR-2 提供给 T08 的配置读取、安全解析 Interface 形状及交付时间；正常作业的 chat model 构造由 T08 与 T14 如何分工 | 避免跨模块直接读取凭证、重复实现出站校验或模型构造 | T14 与 Agent 负责人 |
+| T14 的作业调用 Interface 按 A3/A15/A16 落地并验证 | 避免跨模块直接读取凭证、重复实现出站校验或模型构造 | 本轮独立 T14 修补 PR |
 | 澄清消息、对话和 `model_calls` 的迁移与 HTTP 契约尚未落地；T04 四个生成类端点仍是契约桩 | T08 的首个真实作业与 T09 接线需要稳定契约 | 契约/数据负责人、T08/T09 负责人 |
 | OpenAI/Anthropic 的真实评估模型、API 模式覆盖范围、能力门槛与所需测试凭证 | 无法据固定样例宣称双 provider 真实验收完成 | Agent 负责人、产品决策人 |
 | 16 号领域策略包的结构、校验点及「周训练量增幅」基线算法仍属实施建议 | 不能把推荐结构或算法直接实现为已确认规则 | Agent、业务规则与产品负责人 |
@@ -142,7 +142,7 @@ $ bash scripts/test.sh  （通过 Git Bash 执行）
 
 ## 9. 给接手者
 
-1. 从最新 `main` 起步。T14 PR #26 只交付契约面，六个模型配置端点当前仍是业务桩；等 PR-2 提供可用 Interface 后再做真实调用接线。T14 的 `/test` 只做最小连接测试，不经过 T08 的图。
+1. 从最新 `main` 起步。T14 #26/#28 已交付配置契约与业务接口；作业侧模型解析在独立 T14 修补 PR 交付后由 T08 消费。T14 的 `/test` 只做最小连接测试，不经过 T08 的图。
 2. T04 已有档案、路线与计划确定性核心；四个生成端点（`route-generations`、`route-variants`、`plan-generations`、`plan-change-requests`）仍为契约桩。接线前与 T09 明确谁拥有 HTTP 提交、候选校验及最终持久化。
 3. T07 提供作业租约、去重、取消、恢复和条件提交。模型调用不进入写事务；处理函数提交时用 T07 的 `commit(session)` 协议，在同一事务内重新校验输入 revision。不要自建第二套作业状态或把 Celery ID 当业务身份。
 4. 模型输出、对话摘要和上传材料都不是业务事实源。档案字段来源、领域硬约束、预算和版本必须由服务端重新校验；图仅编排单次步骤，不承担跨请求记忆。

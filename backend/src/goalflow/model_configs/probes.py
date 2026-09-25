@@ -18,7 +18,7 @@ from typing import Any, Final
 
 from pydantic import BaseModel
 
-from goalflow.contracts.enums import CapabilityState, ModelProvider, ModelTestErrorKind
+from goalflow.contracts.enums import CapabilityState, ModelApiMode, ModelProvider, ModelTestErrorKind
 
 _PROBE_TIMEOUT_SECONDS: Final = 15
 _PROBE_MAX_RETRIES: Final = 1
@@ -88,20 +88,30 @@ def classify_error(exc: Exception) -> ModelTestErrorKind:
 def build_chat_model(
     *,
     model_provider: ModelProvider,
+    api_mode: ModelApiMode | None,
     model_id: str,
     api_key: str | None,
     base_url: str | None,
+    timeout_seconds: float = _PROBE_TIMEOUT_SECONDS,
+    max_retries: int = _PROBE_MAX_RETRIES,
+    max_tokens: int = _PROBE_MAX_TOKENS,
 ) -> Any:
-    """按配置构造 chat model 实例（07 号第 1 节的 init_chat_model 参数面）。"""
+    """按配置构造 chat model；作业与 /test 各自提供调用上限。"""
     from langchain.chat_models import init_chat_model
 
     kwargs: dict[str, Any] = {
         "model": model_id,
         "model_provider": model_provider.value,
-        "timeout": _PROBE_TIMEOUT_SECONDS,
-        "max_retries": _PROBE_MAX_RETRIES,
-        "max_tokens": _PROBE_MAX_TOKENS,
+        "timeout": timeout_seconds,
+        "max_retries": max_retries,
+        "max_tokens": max_tokens,
     }
+    if model_provider is ModelProvider.OPENAI:
+        if api_mode is None:
+            raise ValueError("OpenAI 模型配置缺少 api_mode")
+        kwargs["use_responses_api"] = api_mode is ModelApiMode.RESPONSES
+    elif api_mode is not None:
+        raise ValueError("Anthropic 模型配置不使用 api_mode")
     if api_key is not None:
         kwargs["api_key"] = api_key
     if base_url is not None:
