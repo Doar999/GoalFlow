@@ -14,9 +14,12 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import CheckConstraint, inspect
+from sqlalchemy import CheckConstraint, inspect, text
+from sqlalchemy.exc import IntegrityError
 
+import goalflow.agent.models
 import goalflow.auth.models  # 注册账号表（F401 只报在同一包名的最后一条 import 上）
+import goalflow.conversations.models
 import goalflow.goals.models
 import goalflow.idempotency.models  # 注册幂等表
 import goalflow.jobs.models
@@ -95,3 +98,48 @@ def test_account_migration_round_trips(url: str):
     assert {name: [str(column) for column in columns] for name, columns in after.items()} == {
         name: [str(column) for column in columns] for name, columns in before.items()
     }
+
+
+def test_conversation_message_sequence_is_unique_on_production_sqlite(url: str):
+    """同一对话的消息序号不能重复；真实库连接须开启 WAL 和外键。"""
+    _alembic(url, "upgrade", "head")
+    engine = create_database_engine(url)
+    moment = "2026-09-25T00:00:00.000000+00:00"
+    try:
+        with engine.begin() as connection:
+            assert connection.exec_driver_sql("PRAGMA journal_mode").scalar_one() == "wal"
+            assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+            connection.execute(
+                text(
+                    "INSERT INTO users"
+                    " (id, account_identifier, role, status, timezone, revision, created_at, updated_at)"
+                    " VALUES ('owner-1', 'contract@local.dev', 'user', 'active', 'UTC', 0, :now, :now)"
+                ),
+                {"now": moment},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO conversations (id, owner_id, revision, created_at, updated_at)"
+                    " VALUES ('conversation-1', 'owner-1', 0, :now, :now)"
+                ),
+                {"now": moment},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO messages"
+                    " (id, owner_id, conversation_id, sequence, role, content, created_at)"
+                    " VALUES ('message-1', 'owner-1', 'conversation-1', 1, 'user', '目标描述', :now)"
+                ),
+                {"now": moment},
+            )
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO messages"
+                    " (id, owner_id, conversation_id, sequence, role, content, created_at)"
+                    " VALUES ('message-2', 'owner-1', 'conversation-1', 1, 'user', '重复', :now)"
+                ),
+                {"now": moment},
+            )
+    finally:
+        engine.dispose()

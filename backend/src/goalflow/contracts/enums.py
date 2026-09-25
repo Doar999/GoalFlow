@@ -133,6 +133,13 @@ class ProfileDraftReadiness(StrEnum):
     BLOCKED = "blocked"
 
 
+class MessageRole(StrEnum):
+    """持久化对话消息的发言方；模型内部 system/tool 消息不落用户对话表。"""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
 class RouteSetStatus(StrEnum):
     """路线集合状态。新集合不覆盖旧集合；输入 revision 变化使晚返回结果 stale（11 号第 3、6 节）。"""
 
