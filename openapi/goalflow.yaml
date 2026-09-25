@@ -585,6 +585,43 @@ components:
       - expected_revision
       title: ConstrainTaskRequest
       type: object
+    ConversationResponse:
+      properties:
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        goal_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Goal Id
+        id:
+          title: Id
+          type: string
+        revision:
+          description: 服务端当前版本号
+          minimum: 0.0
+          title: Revision
+          type: integer
+        task_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Task Id
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - revision
+      - id
+      - goal_id
+      - task_id
+      - created_at
+      - updated_at
+      title: ConversationResponse
+      type: object
     CreateGoalRequest:
       properties:
         initial_description:
@@ -1011,6 +1048,17 @@ components:
       - expected_revision
       - profile_id
       title: GenerateRoutesRequest
+      type: object
+    GoalConversationsResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ConversationResponse'
+          title: Items
+          type: array
+      required:
+      - items
+      title: GoalConversationsResponse
       type: object
     GoalDomain:
       description: 'Agent 的内部策略路由，不是用户必填标签（03 第 2 节）。
@@ -1510,6 +1558,67 @@ components:
       - account_identifier
       - password
       title: LoginRequest
+      type: object
+    MessageResponse:
+      properties:
+        content:
+          title: Content
+          type: string
+        conversation_id:
+          title: Conversation Id
+          type: string
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        id:
+          title: Id
+          type: string
+        job_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Job Id
+        role:
+          $ref: '#/components/schemas/MessageRole'
+        sequence:
+          minimum: 1.0
+          title: Sequence
+          type: integer
+      required:
+      - id
+      - conversation_id
+      - sequence
+      - role
+      - content
+      - job_id
+      - created_at
+      title: MessageResponse
+      type: object
+    MessageRole:
+      description: 持久化对话消息的发言方；模型内部 system/tool 消息不落用户对话表。
+      enum:
+      - user
+      - assistant
+      title: MessageRole
+      type: string
+    MessagesResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MessageResponse'
+          title: Items
+          type: array
+        next_after_sequence:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: 非空表示还有消息，下一页以此值作为 after_sequence
+          title: Next After Sequence
+      required:
+      - items
+      - next_after_sequence
+      title: MessagesResponse
       type: object
     ModelApiMode:
       description: 'OpenAI 系供应商的 API 形态（07 号文档第 2 节）。
@@ -2475,6 +2584,35 @@ components:
       required:
       - config_id
       title: SetDefaultModelConfigRequest
+      type: object
+    SubmitMessageRequest:
+      properties:
+        content:
+          description: 用户补充的澄清文本
+          maxLength: 20000
+          minLength: 1
+          title: Content
+          type: string
+        expected_revision:
+          description: 客户端读到的版本号。与服务端当前版本不一致时返回 REVISION_CONFLICT。
+          minimum: 0.0
+          title: Expected Revision
+          type: integer
+      required:
+      - expected_revision
+      - content
+      title: SubmitMessageRequest
+      type: object
+    SubmittedMessageResponse:
+      properties:
+        job:
+          $ref: '#/components/schemas/JobResponse'
+        message:
+          $ref: '#/components/schemas/MessageResponse'
+      required:
+      - message
+      - job
+      title: SubmittedMessageResponse
       type: object
     TaskConstraintResponse:
       description: 单日任务约束的保存结果（05-module-contracts constrain_today_task）。
@@ -3557,6 +3695,150 @@ paths:
       summary: 拒绝变更提案
       tags:
       - goal-links
+  /api/conversations/{conversation_id}/messages:
+    get:
+      description: 刷新页面后按对话内 sequence 补读消息；消息只属于当前用户。
+      operationId: list_messages_api_conversations__conversation_id__messages_get
+      parameters:
+      - description: 对话 ID
+        in: path
+        name: conversation_id
+        required: true
+        schema:
+          description: 对话 ID
+          maxLength: 36
+          title: Conversation Id
+          type: string
+      - in: query
+        name: after_sequence
+        required: false
+        schema:
+          default: 0
+          minimum: 0
+          title: After Sequence
+          type: integer
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 100
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或对话不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 对话业务接线尚未实现
+      summary: 按顺序读取澄清消息
+      tags:
+      - conversations
+    post:
+      description: 原子保存用户消息与澄清作业；首次及幂等重放均返回 202 和同一作业引用。
+      operationId: submit_message_api_conversations__conversation_id__messages_post
+      parameters:
+      - description: 对话 ID
+        in: path
+        name: conversation_id
+        required: true
+        schema:
+          description: 对话 ID
+          maxLength: 36
+          title: Conversation Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitMessageRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmittedMessageResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求来源不受信任
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或对话不存在，或不属于当前用户
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 对话版本已更新，或 Idempotency-Key 已用于另一项请求
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 请求参数校验未通过
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 对话业务接线尚未实现
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 默认模型配置不可用
+      summary: 提交澄清消息
+      tags:
+      - conversations
   /api/goal-links/{link_id}/confirm:
     post:
       description: proposed → active，并在同一事务内创建依赖边、校验全图无环（含其他目标的当前版本）；成环返回 DEPENDENCY_CYCLE（18 号第 2 节）。依赖边只在此事务内落库（03
@@ -4064,6 +4346,54 @@ paths:
       summary: 撤销结束
       tags:
       - goals
+  /api/goals/{goal_id}/conversations:
+    get:
+      description: 按创建时间列出目标关联的对话；路径目标必须属于当前用户。
+      operationId: list_goal_conversations_api_goals__goal_id__conversations_get
+      parameters:
+      - description: 目标 ID
+        in: path
+        name: goal_id
+        required: true
+        schema:
+          description: 目标 ID
+          maxLength: 36
+          title: Goal Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalConversationsResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 未登录或会话失效
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 目标或对话不存在，或不属于当前用户
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 对话业务接线尚未实现
+      summary: 读取目标的澄清对话
+      tags:
+      - conversations
   /api/goals/{goal_id}/derivation:
     post:
       description: 复制源目标最新档案内容为新目标的档案草稿，不复制计划、任务与执行记录；源目标保持终态（17 号第 4 节）。

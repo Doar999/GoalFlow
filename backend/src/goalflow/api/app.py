@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from goalflow.api.errors import register_exception_handlers
 from goalflow.api.middleware import RequestIdMiddleware
-from goalflow.api.routes import auth, goal_links, goals, health, jobs, model_configs, scheduling
+from goalflow.api.routes import auth, conversations, goal_links, goals, health, jobs, model_configs, scheduling
 
 
 def create_app() -> FastAPI:
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(jobs.router)
     app.include_router(goals.router)
+    app.include_router(conversations.router)
     app.include_router(scheduling.router)
     app.include_router(goal_links.router)
     app.include_router(model_configs.router)
